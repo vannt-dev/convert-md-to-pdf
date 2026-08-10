@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   chrome.storage.local.get(['pendingMarkdown', 'pendingTitle', 'pendingOptions'], (data) => {
     if (!data.pendingMarkdown) {
-      contentEl.innerHTML = '<p>No pending document found. Please open from extension popup.</p>';
+      contentEl.innerHTML = '<p style="padding:20px; color:#64748b;">No pending document found. Please open from extension popup.</p>';
       return;
     }
 
@@ -142,12 +142,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderKaTeXMath(element) {
-    // Render inline math like $E = mc^2$
     const nodes = element.querySelectorAll('p, li, td, th, h1, h2, h3, h4');
     nodes.forEach(node => {
       if (node.children.length === 0 && node.textContent.includes('$')) {
         const text = node.textContent;
-        const replaced = text.replace(/\$([^$]+)\$/g, (match, expr) => {
+        // Match inline math like $E = mc^2$ avoiding price matches like $10 or $20
+        const replaced = text.replace(/\$([^\$\s](?:[^\$]*[^\$\s])?)\$/g, (match, expr) => {
+          // Skip simple currency numbers like $100 or $50.00
+          if (/^\d+(\.\d+)?$/.test(expr)) return match;
           try {
             return katex.renderToString(expr, { throwOnError: false });
           } catch (e) {
@@ -216,7 +218,6 @@ document.addEventListener('DOMContentLoaded', () => {
         .mermaid-container { display: flex; justify-content: center; margin: 12px 0; border: 1px solid #ccc; padding: 8px; break-inside: avoid-page; }
       `;
     } else {
-      // Modern Default
       styles = `
         body { font-family: 'Inter', 'Noto Sans JP', sans-serif; font-size: 13px; line-height: 1.55; color: #1e293b; }
         h1 { font-size: 21px; font-weight: 700; color: #0f172a; border-bottom: 3px solid #2563eb; padding-bottom: 8px; text-transform: uppercase; break-after: avoid-page; }
