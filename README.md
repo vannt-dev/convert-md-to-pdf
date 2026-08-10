@@ -84,7 +84,13 @@ npx convert-md-to-pdf ./docs/ -o ./dist/
 
 ---
 
-## 📂 Project Architecture
+## 🌿 Git Workflow & Contribution
+
+Please review our [Git Commit & Push Workflow Guide (GIT_WORKFLOW.md)](GIT_WORKFLOW.md) for conventional commit guidelines, branching strategies, and pre-commit checks.
+
+---
+
+## 📁 Project Architecture
 
 ```
 convert-md-to-pdf/
@@ -119,7 +125,8 @@ convert-md-to-pdf/
 │   └── fetch-vendor-libs.js # Vendor library sync script
 ├── package.json
 ├── README.md
-└── PRIVACY_POLICY.md
+├── PRIVACY_POLICY.md
+└── GIT_WORKFLOW.md
 ```
 
 ---
