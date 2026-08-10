@@ -1,5 +1,5 @@
 const { marked } = require('marked');
-const { preprocessMarkdown, escapeHtml } = require('./utils');
+const { preprocessMarkdown, generateToc, readCustomCss, escapeHtml } = require('./utils');
 const { getHtmlTemplate } = require('./templates');
 
 /**
@@ -12,15 +12,31 @@ function parseMarkdownToHtml(markdownContent, options = {}) {
   // Preprocess LaTeX math & symbols
   const processedMd = preprocessMarkdown(markdownContent);
 
+  // Generate TOC if enabled
+  let tocHtml = '';
+  let headingsMap = new Map();
+  if (options.toc) {
+    const tocResult = generateToc(processedMd);
+    tocHtml = tocResult.tocHtml;
+    headingsMap = tocResult.headingsMap;
+  }
+
+  // Read custom CSS if file path supplied
+  let customCss = options.customCss || '';
+  if (options.cssFile) {
+    customCss += '\n' + readCustomCss(options.cssFile);
+  }
+
   // Configure marked options
   marked.setOptions({
     gfm: true,
     breaks: true
   });
 
-  // Custom renderer for code blocks & diagrams
+  // Custom renderer for code blocks, diagrams & heading IDs
   const renderer = new marked.Renderer();
   const originalCodeRenderer = renderer.code.bind(renderer);
+  const originalHeadingRenderer = renderer.heading.bind(renderer);
 
   renderer.code = function(codeArg, infostringArg, escapedArg) {
     let text = '';
@@ -46,10 +62,25 @@ function parseMarkdownToHtml(markdownContent, options = {}) {
     return originalCodeRenderer.call(this, codeArg, infostringArg, escapedArg);
   };
 
+  renderer.heading = function(text, level, raw, slugger) {
+    const rawClean = raw ? raw.trim() : text;
+    const slug = headingsMap.get(rawClean) || (slugger ? slugger.slug(raw) : `heading-${level}`);
+    return `<h${level} id="${slug}">${text}</h${level}>`;
+  };
+
   marked.use({ renderer });
 
   // Parse Markdown to Body HTML
   let bodyHtml = marked.parse(processedMd);
+
+  // Insert TOC after first H1 or at the top
+  if (tocHtml) {
+    if (bodyHtml.includes('</h1>')) {
+      bodyHtml = bodyHtml.replace('</h1>', '</h1>\n' + tocHtml);
+    } else {
+      bodyHtml = tocHtml + bodyHtml;
+    }
+  }
 
   // Wrap section headers with section-group divs for optimal page breaking
   bodyHtml = bodyHtml.replace(/<h3>(.*?)<\/h3>\s*(<div class="ui-mockup-container">|<table|<div class="mermaid-container">|<ul|<ol)/g, 
@@ -64,7 +95,10 @@ function parseMarkdownToHtml(markdownContent, options = {}) {
   return getHtmlTemplate({
     title,
     bodyHtml,
-    options
+    options: {
+      ...options,
+      customCss
+    }
   });
 }
 

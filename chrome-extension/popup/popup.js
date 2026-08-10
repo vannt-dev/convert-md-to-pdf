@@ -8,22 +8,49 @@ document.addEventListener('DOMContentLoaded', () => {
   const fileName = document.getElementById('file-name');
   const btnClearFile = document.getElementById('btn-clear-file');
   const markdownInput = document.getElementById('markdown-input');
+  const draftStatus = document.getElementById('draft-status');
   const btnGrabPage = document.getElementById('btn-grab-page');
+  const historyList = document.getElementById('history-list');
   const themeSelect = document.getElementById('theme-select');
   const pageSizeSelect = document.getElementById('page-size');
+  const chkToc = document.getElementById('chk-toc');
   const chkMermaid = document.getElementById('chk-mermaid');
   const chkKatex = document.getElementById('chk-katex');
+  const customCssInput = document.getElementById('custom-css-input');
   const btnConvert = document.getElementById('btn-convert');
 
   let loadedFileContent = null;
   let loadedFileName = 'Document';
+  let saveDraftTimeout = null;
 
-  // Load saved preferences
-  chrome.storage.sync.get(['theme', 'pageSize', 'mermaid', 'katex'], (items) => {
+  // Load saved preferences & draft
+  chrome.storage.sync.get(['theme', 'pageSize', 'toc', 'mermaid', 'katex', 'customCss'], (items) => {
     if (items.theme) themeSelect.value = items.theme;
     if (items.pageSize) pageSizeSelect.value = items.pageSize;
+    if (items.toc !== undefined) chkToc.checked = items.toc;
     if (items.mermaid !== undefined) chkMermaid.checked = items.mermaid;
     if (items.katex !== undefined) chkKatex.checked = items.katex;
+    if (items.customCss) customCssInput.value = items.customCss;
+  });
+
+  // Restore Draft Markdown
+  chrome.storage.local.get(['draftMarkdown', 'conversionHistory'], (data) => {
+    if (data.draftMarkdown) {
+      markdownInput.value = data.draftMarkdown;
+      draftStatus.textContent = 'Draft restored';
+    }
+    renderHistory(data.conversionHistory || []);
+  });
+
+  // Draft Auto-Save on typing
+  markdownInput.addEventListener('input', () => {
+    draftStatus.textContent = 'Saving draft...';
+    clearTimeout(saveDraftTimeout);
+    saveDraftTimeout = setTimeout(() => {
+      chrome.storage.local.set({ draftMarkdown: markdownInput.value }, () => {
+        draftStatus.textContent = 'Draft saved';
+      });
+    }, 500);
   });
 
   // Tab switching
@@ -97,7 +124,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (results && results[0] && results[0].result) {
           markdownInput.value = results[0].result;
           loadedFileName = tab.title ? tab.title.replace(/[^\w\s-]/gi, '') : 'Page_Export';
-          // Switch to paste tab to show content
+          // Save draft
+          chrome.storage.local.set({ draftMarkdown: markdownInput.value });
+          // Switch to paste tab
           tabBtns[1].click();
         }
       });
@@ -105,6 +134,46 @@ document.addEventListener('DOMContentLoaded', () => {
       alert('Could not grab page content: ' + err.message);
     }
   });
+
+  // Render History List
+  function renderHistory(historyItems) {
+    if (!historyItems || historyItems.length === 0) {
+      historyList.innerHTML = '<p class="history-empty">No recent conversions found.</p>';
+      return;
+    }
+
+    historyList.innerHTML = '';
+    historyItems.forEach((item, index) => {
+      const dateStr = new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const div = document.createElement('div');
+      div.className = 'history-item';
+      div.innerHTML = `
+        <div>
+          <div class="history-title">${escapeHtml(item.title)}</div>
+          <div class="history-meta">${dateStr} • Theme: ${item.options.theme}</div>
+        </div>
+        <button class="btn-clear" title="Re-open preview">▶</button>
+      `;
+      div.addEventListener('click', () => {
+        openPreview(item.markdown, item.title, item.options);
+      });
+      historyList.appendChild(div);
+    });
+  }
+
+  function saveHistoryItem(item) {
+    chrome.storage.local.get(['conversionHistory'], (data) => {
+      let history = data.conversionHistory || [];
+      // Remove duplicate if same title exists
+      history = history.filter(h => h.title !== item.title);
+      // Prepend new item
+      history.unshift(item);
+      // Limit to 10 items
+      if (history.length > 10) history = history.slice(0, 10);
+
+      chrome.storage.local.set({ conversionHistory: history });
+    });
+  }
 
   // Convert & Open Preview
   btnConvert.addEventListener('click', () => {
@@ -118,6 +187,8 @@ document.addEventListener('DOMContentLoaded', () => {
       markdownText = markdownInput.value.trim();
     } else if (loadedFileContent) {
       markdownText = loadedFileContent;
+    } else if (markdownInput.value.trim()) {
+      markdownText = markdownInput.value.trim();
     }
 
     if (!markdownText) {
@@ -125,29 +196,42 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Save preferences
-    chrome.storage.sync.set({
+    const conversionOptions = {
       theme: themeSelect.value,
       pageSize: pageSizeSelect.value,
+      toc: chkToc.checked,
       mermaid: chkMermaid.checked,
-      katex: chkKatex.checked
+      katex: chkKatex.checked,
+      customCss: customCssInput.value
+    };
+
+    // Save preferences
+    chrome.storage.sync.set(conversionOptions);
+
+    // Save history item
+    saveHistoryItem({
+      title,
+      markdown: markdownText,
+      options: conversionOptions,
+      timestamp: Date.now()
     });
 
-    // Save markdown & conversion settings to local storage
+    openPreview(markdownText, title, conversionOptions);
+  });
+
+  function openPreview(markdown, title, options) {
     chrome.storage.local.set({
-      pendingMarkdown: markdownText,
+      pendingMarkdown: markdown,
       pendingTitle: title,
-      pendingOptions: {
-        theme: themeSelect.value,
-        pageSize: pageSizeSelect.value,
-        mermaid: chkMermaid.checked,
-        katex: chkKatex.checked
-      }
+      pendingOptions: options
     }, () => {
-      // Open preview tab
       chrome.tabs.create({
         url: chrome.runtime.getURL('preview/preview.html')
       });
     });
-  });
+  }
+
+  function escapeHtml(str) {
+    return (str || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
 });

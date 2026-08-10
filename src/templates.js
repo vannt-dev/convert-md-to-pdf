@@ -8,6 +8,7 @@ function getHtmlTemplate({ title, bodyHtml, options = {} }) {
   const pageSize = options.pageSize || 'A4';
   const orientation = options.orientation || 'portrait';
   const margin = options.margin || '14mm 12mm 16mm 12mm';
+  const customCss = options.customCss || '';
 
   const themeStyles = getThemeStyles(theme);
 
@@ -89,6 +90,54 @@ function getHtmlTemplate({ title, bodyHtml, options = {} }) {
     }
 
     ${themeStyles}
+
+    /* Table of Contents Styling */
+    .toc-container {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-left: 4px solid #2563eb;
+      border-radius: 6px;
+      padding: 14px 18px;
+      margin: 16px 0 24px 0;
+      break-inside: avoid-page;
+      page-break-inside: avoid;
+    }
+
+    .toc-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1e3a8a;
+      margin-bottom: 10px;
+      border-bottom: 1px solid #cbd5e1;
+      padding-bottom: 6px;
+    }
+
+    .toc-list {
+      list-style: none;
+      padding-left: 0;
+      margin: 0;
+    }
+
+    .toc-list li {
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
+
+    .toc-list a {
+      color: #2563eb;
+      text-decoration: none;
+    }
+
+    .toc-list a:hover {
+      text-decoration: underline;
+    }
+
+    .toc-item-h1 { font-weight: 600; padding-left: 0; }
+    .toc-item-h2 { padding-left: 16px; }
+    .toc-item-h3 { padding-left: 32px; font-size: 12px; color: #64748b; }
+
+    /* Custom Injected CSS */
+    ${customCss}
   </style>
 </head>
 <body>

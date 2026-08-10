@@ -1,0 +1,12 @@
+/* Custom styling test for convert-md-to-pdf */
+h1 {
+  color: #7c3aed !important;
+  border-bottom-color: #8b5cf6 !important;
+}
+
+.formula-box {
+  background-color: #f5f3ff !important;
+  border-color: #ddd6fe !important;
+  border-left-color: #7c3aed !important;
+  color: #5b21b6 !important;
+}

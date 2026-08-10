@@ -41,10 +41,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderDocument(markdownText, options) {
     // Apply CSS theme styles
-    themeStyleEl.textContent = getThemeStyles(options.theme || 'modern', options.pageSize || 'A4');
+    themeStyleEl.textContent = getThemeStyles(options.theme || 'modern', options.pageSize || 'A4', options.customCss || '');
 
     // Preprocess LaTeX & Symbols
     const processedMd = preprocessMarkdown(markdownText);
+
+    // Generate TOC if requested
+    let tocHtml = '';
+    let headingsMap = new Map();
+    if (options.toc) {
+      const tocResult = generateToc(processedMd);
+      tocHtml = tocResult.tocHtml;
+      headingsMap = tocResult.headingsMap;
+    }
 
     // Configure marked renderer
     const renderer = new marked.Renderer();
@@ -73,10 +82,25 @@ document.addEventListener('DOMContentLoaded', () => {
       return originalCodeRenderer.call(this, codeArg, infostringArg, escapedArg);
     };
 
+    renderer.heading = function(text, level, raw, slugger) {
+      const rawClean = raw ? raw.trim() : text;
+      const slug = headingsMap.get(rawClean) || (slugger ? slugger.slug(raw) : `heading-${level}`);
+      return `<h${level} id="${slug}">${text}</h${level}>`;
+    };
+
     marked.use({ renderer });
 
     // Parse HTML
     let bodyHtml = marked.parse(processedMd);
+
+    // Insert TOC
+    if (tocHtml) {
+      if (bodyHtml.includes('</h1>')) {
+        bodyHtml = bodyHtml.replace('</h1>', '</h1>\n' + tocHtml);
+      } else {
+        bodyHtml = tocHtml + bodyHtml;
+      }
+    }
 
     // Wrap sections for page break
     bodyHtml = bodyHtml.replace(/<h3>(.*?)<\/h3>\s*(<div class="ui-mockup-container">|<table|<div class="mermaid-container">|<ul|<ol)/g, 
@@ -132,6 +156,51 @@ document.addEventListener('DOMContentLoaded', () => {
       .replace(/\$\$\s*([\s\S]+?)\s*\$\$/g, '<div class="formula-box">$1</div>');
   }
 
+  function generateToc(mdContent) {
+    if (!mdContent) return { tocHtml: '', headingsMap: new Map() };
+    const lines = mdContent.split('\n');
+    const headings = [];
+    const headingsMap = new Map();
+    const slugCounts = {};
+
+    lines.forEach(line => {
+      const match = line.match(/^(#{1,3})\s+(.+)$/);
+      if (match) {
+        const level = match[1].length;
+        let title = match[2].trim();
+        title = title.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/`([^`]+)`/g, '$1').replace(/\*+/g, '');
+
+        let slug = title.toLowerCase().replace(/[^\w\u00C0-\u024F\u1EA0-\u1EF9]+/g, '-').replace(/^-+|-+$/g, '');
+        if (!slug) slug = `heading-${headings.length + 1}`;
+
+        if (slugCounts[slug]) {
+          slugCounts[slug]++;
+          slug = `${slug}-${slugCounts[slug]}`;
+        } else {
+          slugCounts[slug] = 1;
+        }
+
+        headings.push({ level, title, slug });
+        headingsMap.set(match[2].trim(), slug);
+      }
+    });
+
+    if (headings.length === 0) return { tocHtml: '', headingsMap };
+
+    let tocHtml = `<div class="toc-container">
+      <div class="toc-title">📋 Table of Contents</div>
+      <ul class="toc-list">\n`;
+
+    headings.forEach(h => {
+      const indentClass = `toc-item-h${h.level}`;
+      tocHtml += `        <li class="${indentClass}"><a href="#${h.slug}">${escapeHtml(h.title)}</a></li>\n`;
+    });
+
+    tocHtml += `      </ul>\n    </div>\n`;
+
+    return { tocHtml, headingsMap };
+  }
+
   function escapeHtml(str) {
     return (str || '')
       .replace(/&/g, "&amp;")
@@ -146,9 +215,7 @@ document.addEventListener('DOMContentLoaded', () => {
     nodes.forEach(node => {
       if (node.children.length === 0 && node.textContent.includes('$')) {
         const text = node.textContent;
-        // Match inline math like $E = mc^2$ avoiding price matches like $10 or $20
         const replaced = text.replace(/\$([^\$\s](?:[^\$]*[^\$\s])?)\$/g, (match, expr) => {
-          // Skip simple currency numbers like $100 or $50.00
           if (/^\d+(\.\d+)?$/.test(expr)) return match;
           try {
             return katex.renderToString(expr, { throwOnError: false });
@@ -163,9 +230,21 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function getThemeStyles(theme, pageSize) {
+  function getThemeStyles(theme, pageSize, customCss = '') {
     const pageCss = `@page { size: ${pageSize} portrait; margin: 14mm 12mm 16mm 12mm; }`;
     let styles = '';
+
+    const tocCss = `
+      .toc-container { background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #2563eb; border-radius: 6px; padding: 14px 18px; margin: 16px 0 24px 0; break-inside: avoid-page; }
+      .toc-title { font-size: 15px; font-weight: 700; color: #1e3a8a; margin-bottom: 10px; border-bottom: 1px solid #cbd5e1; padding-bottom: 6px; }
+      .toc-list { list-style: none; padding-left: 0; margin: 0; }
+      .toc-list li { margin-bottom: 4px; font-size: 13px; }
+      .toc-list a { color: #2563eb; text-decoration: none; }
+      .toc-list a:hover { text-decoration: underline; }
+      .toc-item-h1 { font-weight: 600; padding-left: 0; }
+      .toc-item-h2 { padding-left: 16px; }
+      .toc-item-h3 { padding-left: 32px; font-size: 12px; color: #64748b; }
+    `;
 
     if (theme === 'dark') {
       styles = `
@@ -243,6 +322,6 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
     }
 
-    return pageCss + '\n' + styles;
+    return pageCss + '\n' + styles + '\n' + tocCss + '\n' + customCss;
   }
 });
