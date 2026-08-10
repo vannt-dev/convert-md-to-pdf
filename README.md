@@ -1,46 +1,44 @@
 # 📄 convert-md-to-pdf
 
-> A powerful CLI tool and **Chrome Extension (Manifest V3)** to convert Markdown (`.md`) files, raw text, or web pages into beautifully styled, high-quality PDF documents. Built with support for **Mermaid.js diagrams**, **LaTeX Math**, **ASCII UI Mockups**, **CJK & Vietnamese Typography**, and **Multiple Themes**.
+> A powerful CLI tool and **Browser Extension (Manifest V3)** to convert Markdown (`.md`) files, raw text, or web pages into beautifully styled, high-quality PDF documents. Built with support for **Mermaid.js diagrams**, **LaTeX Math**, **Auto Table of Contents (TOC)**, **Custom CSS Injection**, **CJK & Vietnamese Typography**, and **Multiple Themes**.
 
 ![npm version](https://img.shields.io/npm/v/convert-md-to-pdf?color=blue)
-![Chrome Extension](https://img.shields.io/badge/Chrome_Extension-Manifest_V3-green)
+![Browser Extension](https://img.shields.io/badge/Extension-Manifest_V3-green)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
 
 ## ✨ Features
 
-- 🧩 **Chrome Extension (Manifest V3)**:
+- 🧩 **Browser Extension (Manifest V3)**:
   - Drag & drop `.md` files or paste raw Markdown directly into the extension popup.
+  - Auto-saved draft text in popup & conversion history list with 1-click re-open.
   - Convert active web page or GitHub raw Markdown files with 1 click.
   - Context menu integration: Right-click selected Markdown text or any page -> "Convert to PDF".
-  - Interactive full-page Print Preview with live theme switching and native Chrome PDF export.
-- 🎨 **Multiple Preset Themes**: `modern` (default), `dark`, `academic`, and `minimal`.
+  - Full-page Print Preview with live theme switching, Auto TOC, Custom CSS, and native PDF export.
+- 🚀 **CLI & Batch Conversion**: Convert single files or batch process directories with wildcard patterns.
+- 📋 **Auto Table of Contents (TOC)**: Auto-generates interactive clickable TOC with anchor links (`--toc`).
+- 🎨 **Custom CSS Injection**: Inject custom branding CSS stylesheets (`-c, --css custom.css`).
+- 🎨 **4 Preset Themes**: `modern` (default), `dark`, `academic`, and `minimal`.
 - 📊 **Mermaid Diagrams**: Native sequence diagrams, flowcharts, class diagrams, and gantt charts.
 - 📐 **LaTeX Math Support**: Mathematical equations rendered with KaTeX.
 - 💻 **ASCII UI Mockups**: Styled dark-theme boxes for terminal output & ASCII wireframe mockups.
 - 🌏 **Full CJK & Vietnamese Support**: Pre-configured with Google Fonts (`Inter`, `Noto Sans JP`, `JetBrains Mono`).
-- 📃 **Smart Page Breaking**: Prevents orphan headings (`break-after: avoid`) and manages table/code block pagination.
 
 ---
 
-## 🌐 Chrome Extension Installation & Usage
+## 🌐 Extension Installation & Usage
 
-### How to Install in Google Chrome:
+### How to Install in Google Chrome / Microsoft Edge / Brave:
 1. Clone or download this repository:
    ```bash
    git clone https://github.com/vannt-dev/convert-md-to-pdf.git
    ```
-2. Open Google Chrome and navigate to `chrome://extensions`.
+2. Open your browser and navigate to `chrome://extensions` (or `edge://extensions`).
 3. Enable **Developer mode** (toggle in the top-right corner).
 4. Click **Load unpacked** (Tải tiện ích đã giải nén).
-5. Select the **`chrome-extension`** directory inside this repository.
-6. The **Markdown to PDF Converter** icon will appear in your Chrome toolbar!
-
-### Chrome Extension Features:
-- **Popup UI**: Click the extension icon to upload `.md` files, paste text, or grab current tab markdown.
-- **Context Menu**: Highlight any text on any webpage -> Right-click -> *Convert selected text to PDF*.
-- **Floating Button**: Automatically shows a floating *Convert to PDF* button on GitHub raw `.md` pages.
+5. Select the **`extension`** directory inside this repository.
+6. The **Markdown to PDF Converter** icon will appear in your browser toolbar!
 
 ---
 
@@ -55,59 +53,73 @@ or run directly with `npx`:
 npx convert-md-to-pdf input.md
 ```
 
-### CLI Quick Examples:
+### CLI Examples:
 ```bash
-# Convert a Markdown file with default theme
-npx convert-md-to-pdf input.md
+# Convert a Markdown file with Auto TOC & Custom CSS
+npx convert-md-to-pdf input.md --toc -c custom.css -o output.pdf
 
-# Specify output PDF name and theme
-npx convert-md-to-pdf document.md output.pdf -t dark
+# Batch convert multiple files to an output directory
+npx convert-md-to-pdf file1.md file2.md -o output_dir/
 
-# Set paper size & orientation
-npx convert-md-to-pdf spec.md -p Letter --landscape
+# Convert entire directory of .md files
+npx convert-md-to-pdf ./docs/ -o ./dist/
 ```
 
 ---
 
-## 🛠️ CLI Options Table
+## 🛠️ CLI Options
 
 | Flag | Alias | Description | Default |
 | :--- | :--- | :--- | :--- |
+| `-o, --output <path>`| | Output PDF file path or target directory | Auto-derived |
 | `-t, --theme <theme>` | | Theme: `modern`, `dark`, `academic`, `minimal` | `modern` |
 | `-p, --page-size <size>`| | Paper size: `A4`, `Letter`, `A3`, `Legal` | `A4` |
 | `-l, --landscape` | | Use landscape page orientation | `false` |
 | `-m, --margin <margin>`| | Custom page margin (e.g. `15mm`) | `14mm 12mm 16mm 12mm` |
+| `--toc` | | Auto-generate Table of Contents (TOC) | `false` |
+| `-c, --css <path>` | | Custom CSS stylesheet file path to inject | |
 | `-k, --keep-html` | | Keep temporary HTML file after conversion | `false` |
 | `--no-mermaid` | | Disable Mermaid diagram rendering | `false` |
 | `--no-katex` | | Disable KaTeX math formula rendering | `false` |
-| `-b, --browser <path>` | | Custom Chrome/Edge binary path | Auto-detected |
 
 ---
 
-## 📁 Repository Structure
+## 📂 Project Architecture
 
 ```
 convert-md-to-pdf/
-├── chrome-extension/     # Manifest V3 Chrome Extension source
-│   ├── manifest.json
-│   ├── popup/            # Popup UI (HTML, CSS, JS)
-│   ├── background/       # Service worker & context menus
-│   ├── content/          # Content script for raw MD pages
-│   ├── preview/          # Print preview & export page
-│   ├── lib/              # Vendor libraries (marked, mermaid, katex)
-│   └── icons/            # Extension icons
 ├── bin/
-│   └── cli.js            # Executable CLI script
+│   └── cli.js               # Clean CLI executable
 ├── src/
-│   ├── index.js          # Node.js Library entrypoint
-│   ├── parser.js         # Markdown & math parsing logic
-│   ├── browser.js        # Chrome/Edge detector & PDF renderer
-│   ├── templates.js      # HTML templates & theme styles
-│   └── utils.js          # Preprocessing & helper functions
-├── examples/
-│   └── sample.md         # Example test document
+│   ├── core/                # Shared conversion engine
+│   │   ├── index.js         # Core library API
+│   │   ├── parser.js        # Markdown, Math & TOC parser
+│   │   ├── templates.js     # Theme manager & HTML templates
+│   │   └── utils.js         # Preprocessors & helper utilities
+│   └── browser/             # Headless browser rendering engine
+│       └── renderer.js      # Headless Chrome/Edge launcher & PDF printer
+├── extension/               # Browser Extension (Manifest V3)
+│   ├── manifest.json
+│   ├── background/          # Service worker & context menus
+│   ├── content/             # Content script for raw MD pages
+│   ├── popup/               # Extension Popup UI (File, Paste, Page, History)
+│   ├── preview/             # Print Preview & PDF export page
+│   ├── lib/                 # Vendor libraries (marked, mermaid, katex)
+│   └── icons/               # Extension icons (16, 48, 128)
+├── store-assets/            # Chrome Web Store submission kit
+│   ├── icons/               # Pixel-perfect 128x128 store icons
+│   ├── banners/             # Pixel-perfect 440x280 promo banners
+│   ├── screenshots/         # Pixel-perfect 1280x800 screenshots
+│   └── STORE_LISTING.md     # Store listing metadata & submission guide
+├── examples/                # Usage examples & custom CSS templates
+│   ├── sample.md
+│   └── custom.css
+├── scripts/                 # Build & maintenance scripts
+│   ├── build-extension.js   # Extension bundler script
+│   └── fetch-vendor-libs.js # Vendor library sync script
 ├── package.json
-└── README.md
+├── README.md
+└── PRIVACY_POLICY.md
 ```
 
 ---

@@ -2,17 +2,17 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 
-const libDir = path.join(__dirname, '..', 'chrome-extension', 'lib');
+const libDir = path.join(__dirname, '..', 'extension', 'lib');
 if (!fs.existsSync(libDir)) {
   fs.mkdirSync(libDir, { recursive: true });
 }
 
-// Copy marked.min.js from node_modules
+// Copy marked.min.js from node_modules if present
 const markedSrc = path.join(__dirname, '..', 'node_modules', 'marked', 'marked.min.js');
 const markedDest = path.join(libDir, 'marked.min.js');
 if (fs.existsSync(markedSrc)) {
   fs.copyFileSync(markedSrc, markedDest);
-  console.log('Copied marked.min.js');
+  console.log('✔ Synced marked.min.js');
 }
 
 function downloadFile(url, destPath) {
@@ -28,7 +28,7 @@ function downloadFile(url, destPath) {
       response.pipe(file);
       file.on('finish', () => {
         file.close(() => {
-          console.log(`Downloaded ${path.basename(destPath)}`);
+          console.log(`✔ Downloaded ${path.basename(destPath)}`);
           resolve();
         });
       });
@@ -44,9 +44,9 @@ async function fetchAll() {
     await downloadFile('https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js', path.join(libDir, 'mermaid.min.js'));
     await downloadFile('https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js', path.join(libDir, 'katex.min.js'));
     await downloadFile('https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css', path.join(libDir, 'katex.min.css'));
-    console.log('All vendor libraries successfully downloaded!');
+    console.log('✨ All vendor libraries successfully updated!');
   } catch (err) {
-    console.error('Error downloading vendor libraries:', err.message);
+    console.error('✖ Error downloading vendor libraries:', err.message);
   }
 }
 

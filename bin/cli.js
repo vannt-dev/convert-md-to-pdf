@@ -3,7 +3,7 @@
 const { Command } = require('commander');
 const path = require('path');
 const fs = require('fs');
-const { convertMarkdownToPdf } = require('../src/index');
+const { convertMarkdownToPdf } = require('../src/core/index');
 const packageJson = require('../package.json');
 
 const program = new Command();

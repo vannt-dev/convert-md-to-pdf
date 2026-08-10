@@ -74,7 +74,7 @@ function renderHtmlToPdf(htmlPath, outputPath, options = {}) {
       fileUrl
     ];
 
-    execFile(browserPath, args, { timeout: 30000 }, (error, stdout, stderr) => {
+    execFile(browserPath, args, { timeout: 30000 }, (error) => {
       if (error) {
         // Fallback for older chrome versions that don't support --headless=new
         const fallbackArgs = [

@@ -1,27 +1,28 @@
 {
   "name": "convert-md-to-pdf",
-  "version": "1.0.0",
-  "description": "A powerful CLI tool to convert Markdown files to styled, high-quality PDFs with support for Mermaid diagrams, Math (KaTeX), code highlighting, ASCII mockups, and CJK/Vietnamese typography.",
-  "main": "src/index.js",
+  "version": "1.1.0",
+  "description": "A powerful CLI tool and Manifest V3 Browser Extension to convert Markdown files, text, or web pages into beautifully styled PDFs with Mermaid diagrams, LaTeX math, TOC, and custom themes.",
+  "main": "src/core/index.js",
   "bin": {
     "convert-md-to-pdf": "bin/cli.js",
     "md2pdf": "bin/cli.js"
   },
   "scripts": {
     "start": "node bin/cli.js",
-    "test": "node bin/cli.js examples/sample.md -o output_test.pdf"
+    "build:extension": "node scripts/build-extension.js",
+    "fetch:libs": "node scripts/fetch-vendor-libs.js",
+    "test": "node bin/cli.js examples/sample.md --toc -c examples/custom.css -o output_test.pdf"
   },
   "keywords": [
     "markdown",
     "pdf",
     "cli",
     "converter",
+    "chrome-extension",
     "mermaid",
     "katex",
     "md2pdf",
-    "marked",
-    "chrome",
-    "edge"
+    "marked"
   ],
   "author": "vannt-dev",
   "license": "MIT",
