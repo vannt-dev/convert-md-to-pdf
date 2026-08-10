@@ -1,7 +1,7 @@
 {
   "name": "convert-md-to-pdf",
   "version": "1.1.0",
-  "description": "A powerful CLI tool and Manifest V3 Browser Extension to convert Markdown files, text, or web pages into beautifully styled PDFs with Mermaid diagrams, LaTeX math, TOC, and custom themes.",
+  "description": "A powerful CLI tool and Manifest V3 Browser Extension to convert Markdown files, text, or web pages into beautifully styled PDFs with Mermaid diagrams, LaTeX math, TOC, and themes.",
   "main": "src/core/index.js",
   "bin": {
     "convert-md-to-pdf": "bin/cli.js",
@@ -11,6 +11,9 @@
     "start": "node bin/cli.js",
     "build:extension": "node scripts/build-extension.js",
     "fetch:libs": "node scripts/fetch-vendor-libs.js",
+    "pre-commit": "node scripts/pre-commit.js",
+    "check:commit": "node scripts/check-commit.js",
+    "release": "node scripts/release.js",
     "test": "node bin/cli.js examples/sample.md --toc -c examples/custom.css -o output_test.pdf"
   },
   "keywords": [
