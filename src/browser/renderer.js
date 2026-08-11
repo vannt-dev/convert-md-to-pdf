@@ -109,7 +109,34 @@ function renderHtmlToPdf(htmlPath, outputPath, options = {}) {
   });
 }
 
+/**
+ * Renders multiple HTML files to PDF using concurrent browser execution pool
+ * @param {Array<{ htmlPath: string, outputPath: string }>} itemPairs 
+ * @param {Object} options 
+ * @returns {Promise<Array<string>>}
+ */
+async function renderBatchHtmlToPdf(itemPairs, options = {}) {
+  const concurrency = Math.min(options.concurrency || 4, itemPairs.length);
+  const results = [];
+  const queue = [...itemPairs];
+
+  async function worker() {
+    while (queue.length > 0) {
+      const item = queue.shift();
+      if (!item) break;
+      const pdfPath = await renderHtmlToPdf(item.htmlPath, item.outputPath, options);
+      results.push(pdfPath);
+    }
+  }
+
+  const workers = Array.from({ length: concurrency }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
 module.exports = {
   findBrowserExecutable,
-  renderHtmlToPdf
+  renderHtmlToPdf,
+  renderBatchHtmlToPdf
 };
+

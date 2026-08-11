@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
   const contentEl = document.getElementById('content');
   const themeSelect = document.getElementById('preview-theme');
+  const fontSelect = document.getElementById('preview-font');
   const pageSizeSelect = document.getElementById('preview-size');
   const btnPrint = document.getElementById('btn-trigger-print');
   const themeStyleEl = document.getElementById('theme-style');
@@ -16,8 +17,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const options = data.pendingOptions || {};
 
     document.title = title;
+    const footerTitleEl = document.getElementById('print-footer-title');
+    if (footerTitleEl) footerTitleEl.textContent = title;
 
     if (options.theme) themeSelect.value = options.theme;
+    if (options.font && fontSelect) fontSelect.value = options.font;
     if (options.pageSize) pageSizeSelect.value = options.pageSize;
 
     // Apply theme CSS & render
@@ -29,10 +33,38 @@ document.addEventListener('DOMContentLoaded', () => {
       renderDocument(markdownText, options);
     });
 
+    if (fontSelect) {
+      fontSelect.addEventListener('change', () => {
+        options.font = fontSelect.value;
+        renderDocument(markdownText, options);
+      });
+    }
+
     pageSizeSelect.addEventListener('change', () => {
       options.pageSize = pageSizeSelect.value;
       renderDocument(markdownText, options);
     });
+
+    const btnDownloadHtml = document.getElementById('btn-download-html');
+    if (btnDownloadHtml) {
+      btnDownloadHtml.addEventListener('click', () => {
+        const fullHtml = '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<title>' + 
+          escapeHtml(title) + '</title>\n<style>\n' + 
+          themeStyleEl.textContent + 
+          '\n</style>\n</head>\n<body>\n' + 
+          contentEl.innerHTML + 
+          '\n</body>\n</html>';
+        const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${title.replace(/[^\w\s-]/gi, '') || 'document'}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
+    }
 
     btnPrint.addEventListener('click', () => {
       window.print();
@@ -41,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderDocument(markdownText, options) {
     // Apply CSS theme styles
-    themeStyleEl.textContent = getThemeStyles(options.theme || 'modern', options.pageSize || 'A4', options.customCss || '');
+    themeStyleEl.textContent = getThemeStyles(options.theme || 'modern', options.pageSize || 'A4', options.customCss || '', options.font || '');
 
     // Preprocess LaTeX & Symbols
     const processedMd = preprocessMarkdown(markdownText);
@@ -129,6 +161,19 @@ document.addEventListener('DOMContentLoaded', () => {
             actorBkg: '#1e293b',
             actorTextColor: '#ffffff',
             fontSize: '13px'
+          },
+          sequence: {
+            diagramMarginX: 8,
+            diagramMarginY: 8,
+            actorMargin: 10,
+            width: 110,
+            height: 35,
+            boxMargin: 5,
+            boxTextMargin: 4,
+            noteMargin: 6,
+            messageMargin: 8,
+            useMaxWidth: true,
+            wrap: true
           }
         });
         mermaid.run({ nodes: contentEl.querySelectorAll('.mermaid') });
@@ -141,6 +186,13 @@ document.addEventListener('DOMContentLoaded', () => {
   function preprocessMarkdown(mdContent) {
     if (!mdContent) return '';
     return mdContent
+      .replace(/^>\s*\[!NOTE\]\s*\r?\n/gm, '> **ℹ️ NOTE:** ')
+      .replace(/^>\s*\[!TIP\]\s*\r?\n/gm, '> **💡 TIP:** ')
+      .replace(/^>\s*\[!WARNING\]\s*\r?\n/gm, '> **⚠️ WARNING:** ')
+      .replace(/^>\s*\[!IMPORTANT\]\s*\r?\n/gm, '> **❗ IMPORTANT:** ')
+      .replace(/^>\s*\[!CAUTION\]\s*\r?\n/gm, '> **🚫 CAUTION:** ')
+      .replace(/<!--\s*page-?break\s*-->/gi, '<div class="page-break"></div>')
+      .replace(/\\pagebreak/gi, '<div class="page-break"></div>')
       .replace(/\\longrightarrow/g, '⟶')
       .replace(/\\rightarrow/g, '→')
       .replace(/\$→\$/g, '→')
@@ -193,7 +245,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     headings.forEach(h => {
       const indentClass = `toc-item-h${h.level}`;
-      tocHtml += `        <li class="${indentClass}"><a href="#${h.slug}">${escapeHtml(h.title)}</a></li>\n`;
+      tocHtml += `        <li class="${indentClass}">
+          <a href="#${h.slug}">
+            <span class="toc-item-title">${escapeHtml(h.title)}</span>
+            <span class="toc-item-dots"></span>
+          </a>
+        </li>\n`;
     });
 
     tocHtml += `      </ul>\n    </div>\n`;
@@ -230,22 +287,46 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function getThemeStyles(theme, pageSize, customCss = '') {
+  function getThemeStyles(theme, pageSize, customCss = '', font = '') {
     const pageCss = `@page { size: ${pageSize} portrait; margin: 14mm 12mm 16mm 12mm; }`;
-    let styles = '';
+    let fontOverride = '';
+    if (font) {
+      if (font === 'Lora' || font === 'Merriweather') {
+        fontOverride = `body { font-family: '${font}', Georgia, serif !important; }\n`;
+      } else if (font === 'JetBrains Mono' || font === 'Fira Code') {
+        fontOverride = `body { font-family: '${font}', monospace !important; }\n`;
+      } else {
+        fontOverride = `body { font-family: '${font}', sans-serif !important; }\n`;
+      }
+    }
+
+    const coverCss = `
+      .cover-page { min-height: 85vh; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 40px 20px; break-after: page; page-break-after: always; }
+      .cover-page-inner { max-width: 650px; width: 100%; border: 2px solid #2563eb; padding: 40px 30px; border-radius: 8px; background: #ffffff; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+      .cover-badge { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: #2563eb; background: #eff6ff; padding: 4px 12px; border-radius: 20px; margin-bottom: 20px; }
+      .cover-title { font-size: 28px !important; font-weight: 800 !important; color: #0f172a !important; line-height: 1.3 !important; margin-bottom: 12px !important; border: none !important; padding: 0 !important; text-transform: none !important; }
+      .cover-subtitle { font-size: 16px !important; font-weight: 500 !important; color: #475569 !important; margin-bottom: 24px !important; border: none !important; background: none !important; padding: 0 !important; }
+      .cover-divider { height: 3px; width: 80px; background: linear-gradient(90deg, #2563eb, #38bdf8); margin: 0 auto 24px auto; border-radius: 2px; }
+      .cover-meta-container { display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: #64748b; align-items: center; }
+      .cover-meta-item { display: flex; gap: 8px; }
+      .cover-meta-label { font-weight: 600; color: #334155; }
+    `;
 
     const tocCss = `
       .toc-container { background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #2563eb; border-radius: 6px; padding: 14px 18px; margin: 16px 0 24px 0; break-inside: avoid-page; }
       .toc-title { font-size: 15px; font-weight: 700; color: #1e3a8a; margin-bottom: 10px; border-bottom: 1px solid #cbd5e1; padding-bottom: 6px; }
       .toc-list { list-style: none; padding-left: 0; margin: 0; }
-      .toc-list li { margin-bottom: 4px; font-size: 13px; }
-      .toc-list a { color: #2563eb; text-decoration: none; }
+      .toc-list li { margin-bottom: 6px; font-size: 13px; }
+      .toc-list a { display: flex; align-items: baseline; color: #2563eb; text-decoration: none; }
+      .toc-item-title { flex-shrink: 0; max-width: 80%; }
+      .toc-item-dots { flex-grow: 1; border-bottom: 1px dotted #94a3b8; margin: 0 8px; align-self: center; }
       .toc-list a:hover { text-decoration: underline; }
       .toc-item-h1 { font-weight: 600; padding-left: 0; }
       .toc-item-h2 { padding-left: 16px; }
       .toc-item-h3 { padding-left: 32px; font-size: 12px; color: #64748b; }
     `;
 
+    let styles = '';
     if (theme === 'dark') {
       styles = `
         body { background: #0f172a; color: #e2e8f0; font-family: 'Inter', sans-serif; font-size: 13px; }
@@ -262,7 +343,9 @@ document.addEventListener('DOMContentLoaded', () => {
         pre { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; background: #020617; color: #f8fafc; padding: 12px; border-radius: 6px; break-inside: avoid-page; }
         .formula-box { background: #1e293b; border: 1px solid #38bdf8; padding: 10px; text-align: center; color: #38bdf8; border-radius: 4px; }
         .ui-mockup { background-color: #1e1e2e; color: #a6adc8; border: 1px solid #313244; border-left: 4px solid #89b4fa; }
-        .mermaid-container { display: flex; justify-content: center; margin: 14px 0; background: #1e293b; padding: 12px; border-radius: 6px; break-inside: avoid-page; }
+        .mermaid-container { display: block; text-align: center; margin: 14px 0; background: #1e293b; padding: 12px; border-radius: 6px; overflow-x: auto; break-inside: avoid-page; }
+        .mermaid { display: block; text-align: center; width: 100%; }
+        .mermaid svg { max-width: 100% !important; height: auto !important; margin: 0 auto; display: inline-block; }
       `;
     } else if (theme === 'academic') {
       styles = `
@@ -278,7 +361,67 @@ document.addEventListener('DOMContentLoaded', () => {
         code { font-family: 'JetBrains Mono', monospace; font-size: 11px; background: #f3f4f6; padding: 2px 4px; }
         pre { font-family: 'JetBrains Mono', monospace; font-size: 10px; background: #f9fafb; border: 1px solid #e5e7eb; padding: 10px; break-inside: avoid-page; }
         .formula-box { background: #f9fafb; border: 1px solid #d1d5db; padding: 8px 14px; text-align: center; font-style: italic; }
-        .mermaid-container { display: flex; justify-content: center; margin: 14px 0; background: #ffffff; padding: 8px; border: 1px solid #e5e7eb; break-inside: avoid-page; }
+        .mermaid-container { display: block; text-align: center; margin: 14px 0; background: #ffffff; padding: 8px; border: 1px solid #e5e7eb; overflow-x: auto; break-inside: avoid-page; }
+        .mermaid { display: block; text-align: center; width: 100%; }
+        .mermaid svg { max-width: 100% !important; height: auto !important; margin: 0 auto; display: inline-block; }
+      `;
+    } else if (theme === 'github') {
+      styles = `
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 13px; line-height: 1.6; color: #1f2328; }
+        h1 { font-size: 22px; font-weight: 600; color: #1f2328; border-bottom: 1px solid #d0d7de; padding-bottom: 8px; break-after: avoid-page; }
+        h2 { font-size: 17px; font-weight: 600; color: #1f2328; border-bottom: 1px solid #d0d7de; padding-bottom: 6px; margin-top: 20px; break-after: avoid-page; }
+        h3 { font-size: 14.5px; font-weight: 600; color: #1f2328; break-after: avoid-page; }
+        blockquote { border-left: 4px solid #d0d7de; color: #656d76; padding: 8px 16px; margin: 12px 0; }
+        table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; }
+        tr { break-inside: avoid-page; }
+        th { background: #f6f8fa; color: #1f2328; font-weight: 600; padding: 8px; border: 1px solid #d0d7de; }
+        td { padding: 7px; border: 1px solid #d0d7de; }
+        tbody tr:nth-child(even) { background: #f6f8fa; }
+        code { font-family: 'Fira Code', monospace; font-size: 11.5px; background: rgba(175,184,193,0.2); color: #1f2328; padding: 2px 5px; border-radius: 4px; }
+        pre { font-family: 'Fira Code', monospace; font-size: 10.5px; background: #f6f8fa; color: #1f2328; padding: 12px; border-radius: 6px; border: 1px solid #d0d7de; overflow-x: auto; break-inside: avoid-page; }
+        .formula-box { background: #f6f8fa; border: 1px solid #d0d7de; padding: 10px; text-align: center; border-radius: 6px; }
+        .mermaid-container { display: block; text-align: center; margin: 14px 0; background: #ffffff; padding: 8px; border: 1px solid #d0d7de; border-radius: 6px; overflow-x: auto; break-inside: avoid-page; }
+        .mermaid { display: block; text-align: center; width: 100%; }
+        .mermaid svg { max-width: 100% !important; height: auto !important; margin: 0 auto; display: inline-block; }
+      `;
+    } else if (theme === 'ebook') {
+      styles = `
+        body { font-family: 'Lora', Georgia, serif; font-size: 13.5px; line-height: 1.75; color: #2d3748; background: #fdfbf7; }
+        #document-container { background: #fdfbf7; color: #2d3748; }
+        h1 { font-size: 23px; font-weight: 700; color: #1a202c; text-align: center; margin-bottom: 20px; border-bottom: 2px solid #cbd5e0; padding-bottom: 8px; break-after: avoid-page; }
+        h2 { font-size: 17px; font-weight: 600; color: #2b6cb0; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-top: 22px; break-after: avoid-page; }
+        h3 { font-size: 14.5px; font-weight: 600; color: #2c5282; font-style: italic; break-after: avoid-page; }
+        blockquote { font-style: italic; border-left: 3px solid #3182ce; background: #edf2f7; padding: 12px 18px; margin: 14px 0; border-radius: 0 4px 4px 0; }
+        table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 12px; }
+        tr { break-inside: avoid-page; }
+        th { background: #ebf8ff; color: #2b6cb0; padding: 8px; border: 1px solid #bee3f8; }
+        td { padding: 7px; border: 1px solid #e2e8f0; }
+        code { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; background: #edf2f7; color: #2d3748; padding: 2px 5px; border-radius: 3px; }
+        pre { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; background: #2d3748; color: #f7fafc; padding: 12px; border-radius: 6px; overflow-x: auto; break-inside: avoid-page; }
+        .formula-box { background: #ebf8ff; border: 1px solid #bee3f8; padding: 10px; text-align: center; color: #2b6cb0; border-radius: 6px; }
+        .mermaid-container { display: block; text-align: center; margin: 14px 0; background: #ffffff; padding: 10px; border: 1px solid #e2e8f0; border-radius: 6px; overflow-x: auto; break-inside: avoid-page; }
+        .mermaid { display: block; text-align: center; width: 100%; }
+        .mermaid svg { max-width: 100% !important; height: auto !important; margin: 0 auto; display: inline-block; }
+      `;
+    } else if (theme === 'cyberpunk') {
+      styles = `
+        body { font-family: 'Fira Code', 'JetBrains Mono', monospace; font-size: 12.5px; line-height: 1.6; color: #00f0ff; background-color: #0d1117; }
+        #document-container { background: #0d1117; color: #00f0ff; }
+        h1 { font-size: 21px; color: #ff007f; text-shadow: 0 0 5px rgba(255,0,127,0.5); border-bottom: 2px solid #ff007f; padding-bottom: 6px; break-after: avoid-page; text-transform: uppercase; }
+        h2 { font-size: 16px; color: #00f0ff; background: #161b22; border-left: 4px solid #00f0ff; padding: 6px 12px; break-after: avoid-page; }
+        h3 { font-size: 14px; color: #ffe600; border-bottom: 1px solid #30363d; padding-bottom: 4px; break-after: avoid-page; }
+        blockquote { background: #161b22; border-left: 4px solid #ff007f; color: #8b949e; padding: 10px 16px; }
+        table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 11.5px; }
+        tr { break-inside: avoid-page; }
+        th { background: #161b22; color: #00f0ff; padding: 8px; border: 1px solid #30363d; }
+        td { padding: 7px; border: 1px solid #30363d; color: #c9d1d9; }
+        tbody tr:nth-child(even) { background: #161b22; }
+        code { font-family: 'Fira Code', monospace; font-size: 11px; background: #161b22; color: #ff007f; padding: 2px 6px; border: 1px solid #30363d; }
+        pre { font-family: 'Fira Code', monospace; font-size: 10px; background: #010409; color: #00f0ff; padding: 12px; border-radius: 4px; border: 1px solid #30363d; overflow-x: auto; break-inside: avoid-page; }
+        .formula-box { background: #161b22; border: 1px solid #00f0ff; padding: 10px; text-align: center; color: #00f0ff; }
+        .mermaid-container { display: block; text-align: center; margin: 14px 0; background: #161b22; padding: 10px; border: 1px solid #ff007f; border-radius: 4px; overflow-x: auto; break-inside: avoid-page; }
+        .mermaid { display: block; text-align: center; width: 100%; }
+        .mermaid svg { max-width: 100% !important; height: auto !important; margin: 0 auto; display: inline-block; }
       `;
     } else if (theme === 'minimal') {
       styles = `
@@ -294,7 +437,9 @@ document.addEventListener('DOMContentLoaded', () => {
         code { font-family: monospace; font-size: 11px; background: #f2f2f2; padding: 2px 4px; }
         pre { font-family: monospace; font-size: 10.5px; background: #f9f9f9; border: 1px solid #ccc; padding: 10px; break-inside: avoid-page; }
         .formula-box { border: 1px solid #000; padding: 8px; text-align: center; margin: 10px 0; }
-        .mermaid-container { display: flex; justify-content: center; margin: 12px 0; border: 1px solid #ccc; padding: 8px; break-inside: avoid-page; }
+        .mermaid-container { display: block; text-align: center; margin: 12px 0; border: 1px solid #ccc; padding: 8px; overflow-x: auto; break-inside: avoid-page; }
+        .mermaid { display: block; text-align: center; width: 100%; }
+        .mermaid svg { max-width: 100% !important; height: auto !important; margin: 0 auto; display: inline-block; }
       `;
     } else {
       styles = `
@@ -317,11 +462,12 @@ document.addEventListener('DOMContentLoaded', () => {
         .ui-mockup-container { margin: 12px 0; break-inside: avoid-page; }
         .ui-mockup { background-color: #1e1e2e; color: #a6adc8; border: 1px solid #313244; border-left: 4px solid #89b4fa; }
         .ui-mockup code { color: #cdd6f4; }
-        .mermaid-container { display: flex; justify-content: center; margin: 14px 0; background-color: #ffffff; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px; break-inside: avoid-page; }
-        .mermaid svg { max-width: 100% !important; height: auto !important; }
+        .mermaid-container { display: block; text-align: center; margin: 14px 0; background-color: #ffffff; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px; overflow-x: auto; break-inside: avoid-page; }
+        .mermaid { display: block; text-align: center; width: 100%; }
+        .mermaid svg { max-width: 100% !important; height: auto !important; margin: 0 auto; display: inline-block; }
       `;
     }
 
-    return pageCss + '\n' + styles + '\n' + tocCss + '\n' + customCss;
+    return pageCss + '\n' + coverCss + '\n' + fontOverride + styles + '\n' + tocCss + '\n' + customCss;
   }
 });

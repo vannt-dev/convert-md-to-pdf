@@ -1,42 +1,23 @@
 const { marked } = require('marked');
-const { preprocessMarkdown, generateToc, readCustomCss, escapeHtml } = require('./utils');
+const { 
+  parseFrontMatter, 
+  generateCoverPage, 
+  preprocessMarkdown, 
+  generateToc, 
+  readCustomCss, 
+  sanitizeHtml, 
+  escapeHtml 
+} = require('./utils');
 const { getHtmlTemplate } = require('./templates');
 
 /**
- * Converts Markdown content into a fully styled HTML string
- * @param {string} markdownContent 
- * @param {Object} options 
- * @returns {string} HTML string
+ * Builds marked custom renderer for diagrams, UI mockups, and headings
+ * @param {Map<string, string>} headingsMap 
+ * @returns {marked.Renderer}
  */
-function parseMarkdownToHtml(markdownContent, options = {}) {
-  // Preprocess LaTeX math & symbols
-  const processedMd = preprocessMarkdown(markdownContent);
-
-  // Generate TOC if enabled
-  let tocHtml = '';
-  let headingsMap = new Map();
-  if (options.toc) {
-    const tocResult = generateToc(processedMd);
-    tocHtml = tocResult.tocHtml;
-    headingsMap = tocResult.headingsMap;
-  }
-
-  // Read custom CSS if file path supplied
-  let customCss = options.customCss || '';
-  if (options.cssFile) {
-    customCss += '\n' + readCustomCss(options.cssFile);
-  }
-
-  // Configure marked options
-  marked.setOptions({
-    gfm: true,
-    breaks: true
-  });
-
-  // Custom renderer for code blocks, diagrams & heading IDs
+function buildMarkedRenderer(headingsMap) {
   const renderer = new marked.Renderer();
   const originalCodeRenderer = renderer.code.bind(renderer);
-  const originalHeadingRenderer = renderer.heading.bind(renderer);
 
   renderer.code = function(codeArg, infostringArg, escapedArg) {
     let text = '';
@@ -54,7 +35,6 @@ function parseMarkdownToHtml(markdownContent, options = {}) {
       return `<div class="mermaid-container"><pre class="mermaid">${text}</pre></div>`;
     }
     
-    // Check if code block contains ASCII UI mockups (box drawing characters)
     if (text.includes('┌') && text.includes('└')) {
       return `<div class="ui-mockup-container"><pre class="ui-mockup"><code>${escapeHtml(text)}</code></pre></div>`;
     }
@@ -68,35 +48,111 @@ function parseMarkdownToHtml(markdownContent, options = {}) {
     return `<h${level} id="${slug}">${text}</h${level}>`;
   };
 
-  marked.use({ renderer });
+  return renderer;
+}
 
-  // Parse Markdown to Body HTML
-  let bodyHtml = marked.parse(processedMd);
+/**
+ * Wraps section headers with section-group divs for clean page-break handling
+ * @param {string} html 
+ * @returns {string}
+ */
+function wrapSectionGroups(html) {
+  let wrapped = html.replace(
+    /<h3>(.*?)<\/h3>\s*(<div class="ui-mockup-container">|<table|<div class="mermaid-container">|<ul|<ol)/g, 
+    '<div class="section-group"><h3>$1</h3>$2'
+  );
+  return wrapped.replace(
+    /(<\/table>|<\/div>|<\/ul>|<\/ol>)\s*(?=<h[1-4]>|<hr|\$)/g, 
+    '$1</div>'
+  );
+}
 
-  // Insert TOC after first H1 or at the top
-  if (tocHtml) {
-    if (bodyHtml.includes('</h1>')) {
-      bodyHtml = bodyHtml.replace('</h1>', '</h1>\n' + tocHtml);
-    } else {
-      bodyHtml = tocHtml + bodyHtml;
-    }
+/**
+ * Converts Markdown content into a fully styled HTML string
+ * @param {string} rawMarkdownContent 
+ * @param {Object} options 
+ * @returns {string} HTML string
+ */
+function parseMarkdownToHtml(rawMarkdownContent, options = {}) {
+  // 1. Extract Front Matter & Metadata
+  const { data: frontMatter, content: markdownContent } = parseFrontMatter(rawMarkdownContent);
+  const titleMatch = markdownContent.match(/^#\s+(.+)$/m);
+  const title = frontMatter.title || options.title || (titleMatch ? titleMatch[1].trim() : 'Converted Document');
+  const subtitle = frontMatter.subtitle || options.subtitle || '';
+  const author = frontMatter.author || options.author || '';
+  const date = frontMatter.date || options.date || '';
+
+  // 2. Merge options
+  const mergedOptions = {
+    theme: options.theme || frontMatter.theme || 'modern',
+    font: options.font || frontMatter.font || 'Inter',
+    pageSize: options.pageSize || frontMatter.pageSize || 'A4',
+    orientation: options.orientation || frontMatter.orientation || (frontMatter.landscape ? 'landscape' : 'portrait'),
+    margin: options.margin || frontMatter.margin || '14mm 12mm 16mm 12mm',
+    toc: options.toc !== undefined ? options.toc : (frontMatter.toc || false),
+    cover: options.cover !== undefined ? options.cover : (frontMatter.cover || false),
+    header: options.header !== undefined ? options.header : (frontMatter.header || true),
+    footer: options.footer !== undefined ? options.footer : (frontMatter.footer || true),
+    mermaid: options.mermaid !== undefined ? options.mermaid : (frontMatter.mermaid !== false),
+    katex: options.katex !== undefined ? options.katex : (frontMatter.katex !== false),
+    customCss: options.customCss || '',
+    cssFile: options.cssFile || frontMatter.cssFile || frontMatter.css
+  };
+
+  // 3. Preprocess Markdown (LaTeX, pagebreaks, alerts)
+  const processedMd = preprocessMarkdown(markdownContent);
+
+  // 4. Generate TOC & Cover Page
+  let tocHtml = '';
+  let headingsMap = new Map();
+  if (mergedOptions.toc) {
+    const tocResult = generateToc(processedMd);
+    tocHtml = tocResult.tocHtml;
+    headingsMap = tocResult.headingsMap;
   }
 
-  // Wrap section headers with section-group divs for optimal page breaking
-  bodyHtml = bodyHtml.replace(/<h3>(.*?)<\/h3>\s*(<div class="ui-mockup-container">|<table|<div class="mermaid-container">|<ul|<ol)/g, 
-    '<div class="section-group"><h3>$1</h3>$2');
-  bodyHtml = bodyHtml.replace(/(<\/table>|<\/div>|<\/ul>|<\/ol>)\s*(?=<h[1-4]>|<hr|\$)/g, '$1</div>');
+  const coverHtml = generateCoverPage({
+    title,
+    subtitle,
+    author,
+    date,
+    cover: mergedOptions.cover
+  });
 
-  // Extract title from H1 if present
-  const titleMatch = markdownContent.match(/^#\s+(.+)$/m);
-  const title = titleMatch ? titleMatch[1].trim() : 'Converted Document';
+  // 5. Read custom CSS file if specified
+  let customCss = mergedOptions.customCss || '';
+  if (mergedOptions.cssFile) {
+    customCss += '\n' + readCustomCss(mergedOptions.cssFile);
+  }
 
-  // Generate full HTML template
+  // 6. Parse Markdown using custom renderer
+  marked.setOptions({ gfm: true, breaks: true });
+  const renderer = buildMarkedRenderer(headingsMap);
+  marked.use({ renderer });
+
+  let bodyHtml = marked.parse(processedMd);
+  bodyHtml = sanitizeHtml(bodyHtml);
+
+  // 7. Inject TOC, Cover Page & Section Groups
+  if (tocHtml) {
+    bodyHtml = bodyHtml.includes('</h1>') 
+      ? bodyHtml.replace('</h1>', '</h1>\n' + tocHtml)
+      : tocHtml + bodyHtml;
+  }
+
+  if (coverHtml) {
+    bodyHtml = coverHtml + bodyHtml;
+  }
+
+  bodyHtml = wrapSectionGroups(bodyHtml);
+
+  // 8. Generate and return full HTML template
   return getHtmlTemplate({
     title,
+    author,
     bodyHtml,
     options: {
-      ...options,
+      ...mergedOptions,
       customCss
     }
   });

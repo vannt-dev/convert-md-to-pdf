@@ -18,30 +18,40 @@ async function convertMarkdownToPdf(inputPath, outputPath, options = {}) {
     throw new Error(`Input file not found: ${absInputPath}`);
   }
 
-  // Derive output PDF path if omitted
-  let absPdfPath;
+  const format = options.format ? options.format.toLowerCase() : 'pdf';
+
+  // Derive output path if omitted
+  let absOutputPath;
   if (outputPath) {
-    absPdfPath = resolvePath(outputPath);
+    absOutputPath = resolvePath(outputPath);
   } else {
     const parsed = path.parse(absInputPath);
-    absPdfPath = path.join(parsed.dir, `${parsed.name}.pdf`);
+    absOutputPath = path.join(parsed.dir, `${parsed.name}.${format}`);
+  }
+
+  // Read Markdown
+  const markdownContent = fs.readFileSync(absInputPath, 'utf8');
+
+  // Parse to HTML
+  const htmlContent = parseMarkdownToHtml(markdownContent, options);
+
+  if (format === 'html') {
+    fs.writeFileSync(absOutputPath, htmlContent, 'utf8');
+    return {
+      htmlPath: absOutputPath,
+      pdfPath: null
+    };
   }
 
   // Temporary HTML path
-  const tempHtmlPath = path.join(path.parse(absPdfPath).dir, `_temp_${Date.now()}.html`);
+  const tempHtmlPath = path.join(path.parse(absOutputPath).dir, `_temp_${Date.now()}_${Math.random().toString(36).substring(7)}.html`);
 
   try {
-    // Read Markdown
-    const markdownContent = fs.readFileSync(absInputPath, 'utf8');
-
-    // Parse to HTML
-    const htmlContent = parseMarkdownToHtml(markdownContent, options);
-
     // Save temporary HTML file
     fs.writeFileSync(tempHtmlPath, htmlContent, 'utf8');
 
     // Render HTML to PDF via headless browser
-    await renderHtmlToPdf(tempHtmlPath, absPdfPath, options);
+    await renderHtmlToPdf(tempHtmlPath, absOutputPath, options);
 
     // Clean up temporary HTML file unless explicitly requested to keep
     if (!options.keepHtml) {
@@ -52,7 +62,7 @@ async function convertMarkdownToPdf(inputPath, outputPath, options = {}) {
 
     return {
       htmlPath: tempHtmlPath,
-      pdfPath: absPdfPath
+      pdfPath: absOutputPath
     };
   } catch (error) {
     // Clean up on failure

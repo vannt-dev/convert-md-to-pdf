@@ -14,7 +14,8 @@
     "pre-commit": "node scripts/pre-commit.js",
     "check:commit": "node scripts/check-commit.js",
     "release": "node scripts/release.js",
-    "test": "node bin/cli.js examples/sample.md --toc -c examples/custom.css -o output_test.pdf"
+    "test": "node tests/index.test.js",
+    "test:sample": "node bin/cli.js examples/sample.md --toc -c examples/custom.css -o output_test.pdf"
   },
   "keywords": [
     "markdown",
