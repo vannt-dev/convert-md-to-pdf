@@ -94,28 +94,16 @@ Sau đó truy cập GitHub repository để mở **Pull Request (PR)** merge và
 
 ## 🏷️ 4. Quy trình Đóng gói & Release Phiên bản mới
 
-Khi chuẩn bị phát hành một phiên bản tiện ích mới (ví dụ: `v1.2.0`):
+Hệ thống hỗ trợ 2 phương án phát hành Release hoàn toàn tự động:
 
-1. **Cập nhật số phiên bản** trong 2 file:
-   - `package.json` $\rightarrow$ `"version": "1.2.0"`
-   - `extension/manifest.json` $\rightarrow$ `"version": "1.2.0"`
+### Cách 1: Tự động Release khi Merge `develop` vào `main` (Khuyên dùng)
+1. Khi hoàn tất phát triển tính năng trên `develop`, mở Pull Request hoặc merge `develop` vào `main`.
+2. Push lên `main`: `git push origin main`
+3. GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)) sẽ tự động đọc số version từ `package.json`, chạy test, build file ZIP và tự đăng bài Release lên GitHub đính kèm file nén `extension-vX.Y.Z.zip`!
 
-2. **Chạy đóng gói tự động**:
-   ```bash
-   npm run build:extension
-   ```
-   *Hệ thống sẽ tự động tạo file `dist/extension-v1.2.0.zip`.*
-
-3. **Commit & Tạo Git Tag**:
-   ```bash
-   git add .
-   git commit -m "chore(release): bump version to v1.2.0"
-   git tag -a v1.2.0 -m "Release version 1.2.0"
-   ```
-
-4. **Push mã nguồn & Tag lên GitHub**:
-   ```bash
-   git push origin main --tags
-   ```
-
-5. **Upload file `dist/extension-v1.2.0.zip` lên Chrome Web Store Developer Console.**
+### Cách 2: Chạy lệnh Release 1-Click từ CLI
+```bash
+# Nâng version tự động (patch | minor | major hoặc nhập số version cụ thể)
+npm run release 1.2.0
+```
+*Script sẽ tự động kiểm tra test, cập nhật version, tạo tag, và push lên GitHub để kích hoạt release tự động.*

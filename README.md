@@ -122,9 +122,29 @@ landscape: false
 
 ---
 
-## 🌿 Git Workflow & Contribution
+## 🌿 Git Flow & Automated Release Workflow
 
-Please review our [Git Commit & Push Workflow Guide (GIT_WORKFLOW.md)](GIT_WORKFLOW.md) for conventional commit guidelines, branching strategies, and pre-commit checks.
+This project follows standard **Git Flow** branching and automated release publishing:
+
+### 🔀 Branching Strategy
+- **`main`**: Production-ready branch. Stores stable releases. Merging code into `main` automatically triggers a GitHub Release.
+- **`develop`**: Active development branch. Daily commits, feature additions, and refactoring take place here.
+
+### 🚀 Automated Release Pipeline
+Whenever code is merged from `develop` into `main` (or a version tag `v*` is pushed), GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)) automatically:
+1. Runs full unit test suite (`npm test`).
+2. Bundles cross-platform extension zip artifacts (`dist/extension-vX.Y.Z.zip`).
+3. Auto-generates release notes from commit history.
+4. Publishes a new official **[GitHub Release](https://github.com/vannt-dev/convert-md-to-pdf/releases)** with downloadable ZIP binaries attached!
+
+### 💡 1-Click CLI Release Command
+You can also bump version and trigger a release with a single CLI command:
+```bash
+npm run release <version|patch|minor|major>
+# Example: npm run release 1.2.0
+```
+
+Please review our [Git Commit & Push Workflow Guide (GIT_WORKFLOW.md)](GIT_WORKFLOW.md) for conventional commit guidelines and pre-commit checks.
 
 ---
 
