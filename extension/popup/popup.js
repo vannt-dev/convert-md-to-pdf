@@ -85,13 +85,13 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
     dropZone.style.borderColor = '#334155';
     if (e.dataTransfer.files.length > 0) {
-      handleFile(e.dataTransfer.files[0]);
+      handleFiles(e.dataTransfer.files);
     }
   });
 
   fileInput.addEventListener('change', (e) => {
     if (e.target.files.length > 0) {
-      handleFile(e.target.files[0]);
+      handleFiles(e.target.files);
     }
   });
 
@@ -103,16 +103,38 @@ document.addEventListener('DOMContentLoaded', () => {
     dropZone.style.display = 'block';
   });
 
-  function handleFile(file) {
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      loadedFileContent = event.target.result;
-      loadedFileName = file.name.replace(/\.[^/.]+$/, "");
-      fileName.textContent = file.name;
-      dropZone.style.display = 'none';
-      fileInfo.style.display = 'flex';
-    };
-    reader.readAsText(file);
+  function handleFiles(files) {
+    if (!files || files.length === 0) return;
+
+    if (files.length === 1) {
+      const file = files[0];
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        loadedFileContent = event.target.result;
+        loadedFileName = file.name.replace(/\.[^/.]+$/, "");
+        fileName.textContent = file.name;
+        dropZone.style.display = 'none';
+        fileInfo.style.display = 'flex';
+      };
+      reader.readAsText(file);
+    } else {
+      const fileArray = Array.from(files);
+      const readPromises = fileArray.map(file => {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve({ name: file.name, text: e.target.result });
+          reader.readAsText(file);
+        });
+      });
+
+      Promise.all(readPromises).then(results => {
+        loadedFileContent = results.map(r => `# ${r.name.replace(/\.[^/.]+$/, "")}\n\n${r.text}`).join('\n\n<!-- pagebreak -->\n\n');
+        loadedFileName = `Batch_${results.length}_Documents`;
+        fileName.textContent = `📦 ${results.length} files loaded`;
+        dropZone.style.display = 'none';
+        fileInfo.style.display = 'flex';
+      });
+    }
   }
 
   // Grab Current Page Content
