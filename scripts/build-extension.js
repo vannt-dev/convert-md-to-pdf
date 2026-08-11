@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const AdmZip = require('adm-zip');
 
 const extDir = path.join(__dirname, '..', 'extension');
 const distDir = path.join(__dirname, '..', 'dist');
@@ -38,16 +38,17 @@ try {
   if (fs.existsSync(latestZipPath)) fs.unlinkSync(latestZipPath);
   if (fs.existsSync(rootZipPath)) fs.unlinkSync(rootZipPath);
 
-  // Compress extension directory into versioned zip
-  const cmd = `powershell -Command "Compress-Archive -Path '${extDir}\\*' -DestinationPath '${versionZipPath}' -Force"`;
-  execSync(cmd, { stdio: 'inherit' });
+  // Compress extension directory using adm-zip (Cross-Platform for Windows/Linux/macOS)
+  const zip = new AdmZip();
+  zip.addLocalFolder(extDir);
+  zip.writeZip(versionZipPath);
 
   // Copy to latest zip & root zip for convenience
   fs.copyFileSync(versionZipPath, latestZipPath);
   fs.copyFileSync(versionZipPath, rootZipPath);
 
   const stat = fs.statSync(versionZipPath);
-  console.log(`\n\x1b[32m✔ Success!\x1b[0m Built Extension ZIP:`);
+  console.log(`\n\x1b[32m✔ Success!\x1b[0m Built Extension ZIP (Cross-Platform):`);
   console.log(`   Version Zip: \x1b[33m${path.relative(process.cwd(), versionZipPath)}\x1b[0m (${(stat.size / (1024 * 1024)).toFixed(2)} MB)`);
   console.log(`   Latest Zip:  \x1b[33m${path.relative(process.cwd(), latestZipPath)}\x1b[0m`);
 } catch (err) {
