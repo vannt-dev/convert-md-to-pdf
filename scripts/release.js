@@ -63,7 +63,7 @@ try {
 
   // 5. Push to GitHub Remote
   console.log('\n⬆️ Step 5: Pushing Release & Tags to GitHub Remote...');
-  execSync('git push origin main --tags', { stdio: 'inherit' });
+  execSync('git push origin HEAD --tags', { stdio: 'inherit' });
 
   console.log(`\n\x1b[32m✨ Release v${newVersion} successfully pushed to GitHub!\x1b[0m`);
   console.log(`   Uploaded file ready at: \x1b[33mdist/extension-v${newVersion}.zip\x1b[0m\n`);
