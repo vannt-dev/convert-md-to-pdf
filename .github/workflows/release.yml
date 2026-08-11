@@ -2,14 +2,16 @@ name: Automated GitHub Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   workflow_dispatch:
     inputs:
       tag_name:
         description: 'Tag name to release (e.g. v1.1.0)'
-        required: true
-        default: 'v1.1.0'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -40,16 +42,20 @@ jobs:
       - name: Build Extension Artifacts
         run: npm run build:extension
 
-      - name: Extract Tag Version
+      - name: Determine Target Version Tag
         id: get_version
         run: |
-          TAG=${GITHUB_REF#refs/tags/}
-          if [ "$TAG" = "$GITHUB_REF" ]; then
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG=${GITHUB_REF#refs/tags/}
+          elif [ -n "${{ github.event.inputs.tag_name }}" ]; then
             TAG="${{ github.event.inputs.tag_name }}"
+          else
+            VER=$(node -p "require('./package.json').version")
+            TAG="v$VER"
           fi
           echo "VERSION_TAG=$TAG" >> $GITHUB_ENV
 
-      - name: Create GitHub Release
+      - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.VERSION_TAG }}
