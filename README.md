@@ -1,6 +1,6 @@
 # 📄 convert-md-to-pdf
 
-> A powerful CLI tool and **Browser Extension (Manifest V3)** to convert Markdown (`.md`) files, raw text, or web pages into beautifully styled, high-quality PDF documents. Built with support for **Mermaid.js diagrams**, **LaTeX Math**, **Auto Table of Contents (TOC)**, **Custom CSS Injection**, **CJK & Vietnamese Typography**, and **Multiple Themes**.
+> A powerful CLI tool and **Browser Extension (Manifest V3)** to convert Markdown (`.md`) files, raw text, or web pages into beautifully styled, high-quality PDF & static HTML documents. Built with support for **Cover Pages**, **Dotted Leader Line Table of Contents (TOC)**, **Mermaid.js diagrams**, **LaTeX Math**, **GitHub Callout Alerts**, **Custom CSS Injection**, **7 Preset Themes**, and **Open-Source Font Selection**.
 
 ![npm version](https://img.shields.io/npm/v/convert-md-to-pdf?color=blue)
 ![Browser Extension](https://img.shields.io/badge/Extension-Manifest_V3-green)
@@ -11,19 +11,22 @@
 ## ✨ Features
 
 - 🧩 **Browser Extension (Manifest V3)**:
-  - Drag & drop `.md` files or paste raw Markdown directly into the extension popup.
+  - Drag & drop single or **multiple `.md` files** directly into the popup.
   - Auto-saved draft text in popup & conversion history list with 1-click re-open.
   - Convert active web page or GitHub raw Markdown files with 1 click.
   - Context menu integration: Right-click selected Markdown text or any page -> "Convert to PDF".
-  - Full-page Print Preview with live theme switching, Auto TOC, Custom CSS, and native PDF export.
+  - Full-page Print Preview with live theme switching, Font Selector, Auto TOC, Custom CSS, and native PDF/HTML export.
+- 📑 **Auto Cover Page Generator**: Generate elegant document report cover pages via YAML Front Matter (`cover: true`) or `--cover` flag.
+- 📌 **Dotted Leader Line Table of Contents (TOC)**: Auto-generates publication-grade TOC with dotted leader lines (`...`) and clickable anchor links (`--toc`).
+- 🎨 **7 Preset Themes**: `modern` (default), `dark`, `academic`, `github`, `ebook`, `cyberpunk`, and `minimal`.
+- 🔤 **Open-Source Font Selector**: 100% free under SIL OFL / Apache 2.0 (`Inter`, `Roboto`, `Lora`, `Merriweather`, `JetBrains Mono`, `Fira Code`).
+- ⚡ **Live Watch Mode & HTML Export**: Real-time auto-recompilation on file changes (`-w, --watch`) and direct static HTML export (`-f, --format html`).
 - 🚀 **CLI & Batch Conversion**: Convert single files or batch process directories with wildcard patterns.
-- 📋 **Auto Table of Contents (TOC)**: Auto-generates interactive clickable TOC with anchor links (`--toc`).
 - 🎨 **Custom CSS Injection**: Inject custom branding CSS stylesheets (`-c, --css custom.css`).
-- 🎨 **4 Preset Themes**: `modern` (default), `dark`, `academic`, and `minimal`.
-- 📊 **Mermaid Diagrams**: Native sequence diagrams, flowcharts, class diagrams, and gantt charts.
+- 📊 **Mermaid Diagrams**: Sequence diagrams (with auto note wrapping), flowcharts, class diagrams, and gantt charts.
 - 📐 **LaTeX Math Support**: Mathematical equations rendered with KaTeX.
+- 💡 **GitHub Callout Box Alerts**: Support for `> [!NOTE]`, `> [!TIP]`, `> [!WARNING]`, `> [!IMPORTANT]`, and `> [!CAUTION]`.
 - 💻 **ASCII UI Mockups**: Styled dark-theme boxes for terminal output & ASCII wireframe mockups.
-- 🌏 **Full CJK & Vietnamese Support**: Pre-configured with Google Fonts (`Inter`, `Noto Sans JP`, `JetBrains Mono`).
 
 ---
 
@@ -37,7 +40,7 @@
 2. Open your browser and navigate to `chrome://extensions` (or `edge://extensions`).
 3. Enable **Developer mode** (toggle in the top-right corner).
 4. Click **Load unpacked** (Tải tiện ích đã giải nén).
-5. Select the **`extension`** directory inside this repository.
+5. Select the **`extension`** directory inside this repository (or load `dist/extension-latest.zip`).
 6. The **Markdown to PDF Converter** icon will appear in your browser toolbar!
 
 ---
@@ -55,8 +58,11 @@ npx convert-md-to-pdf input.md
 
 ### CLI Examples:
 ```bash
-# Convert a Markdown file with Auto TOC & Custom CSS
-npx convert-md-to-pdf input.md --toc -c custom.css -o output.pdf
+# Convert a Markdown file with Cover Page, Auto TOC & Cyberpunk Theme
+npx convert-md-to-pdf input.md --cover --toc -t cyberpunk --font "Fira Code" -o output.pdf
+
+# Watch file and auto-recompile on save
+npx convert-md-to-pdf input.md -w -f html
 
 # Batch convert multiple files to an output directory
 npx convert-md-to-pdf file1.md file2.md -o output_dir/
@@ -71,16 +77,43 @@ npx convert-md-to-pdf ./docs/ -o ./dist/
 
 | Flag | Alias | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `-o, --output <path>`| | Output PDF file path or target directory | Auto-derived |
-| `-t, --theme <theme>` | | Theme: `modern`, `dark`, `academic`, `minimal` | `modern` |
+| `-o, --output <path>`| | Output PDF/HTML file path or target directory | Auto-derived |
+| `-f, --format <format>`| | Output format: `pdf`, `html` | `pdf` |
+| `-w, --watch` | | Live watch input file and auto-recompile on change | `false` |
+| `-t, --theme <theme>` | | Theme: `modern`, `dark`, `academic`, `github`, `ebook`, `cyberpunk`, `minimal` | `modern` |
+| `--font <font>` | | Font family: `Inter`, `Roboto`, `Lora`, `Merriweather`, `JetBrains Mono`, `Fira Code` | `Inter` |
+| `--cover` | | Auto-generate document report Cover Page | `false` |
+| `--toc` | | Auto-generate Table of Contents with Dotted Leader Lines | `false` |
 | `-p, --page-size <size>`| | Paper size: `A4`, `Letter`, `A3`, `Legal` | `A4` |
 | `-l, --landscape` | | Use landscape page orientation | `false` |
-| `-m, --margin <margin>`| | Custom page margin (e.g. `15mm`) | `14mm 12mm 16mm 12mm` |
-| `--toc` | | Auto-generate Table of Contents (TOC) | `false` |
+| `-m, --margin <margin>`| | Custom page margin (e.g. `14mm 12mm 16mm 12mm`) | `14mm 12mm 16mm 12mm` |
 | `-c, --css <path>` | | Custom CSS stylesheet file path to inject | |
 | `-k, --keep-html` | | Keep temporary HTML file after conversion | `false` |
 | `--no-mermaid` | | Disable Mermaid diagram rendering | `false` |
 | `--no-katex` | | Disable KaTeX math formula rendering | `false` |
+
+---
+
+## 📄 Front Matter Options
+
+You can specify conversion settings directly inside your `.md` files using YAML Front Matter:
+
+```yaml
+---
+title: "Quarterly Financial Report"
+subtitle: "Q3 Fiscal Summary"
+author: "Engineering Team"
+date: "2026-08-11"
+cover: true
+toc: true
+theme: github
+font: Inter
+pageSize: A4
+landscape: false
+---
+# Document Executive Summary
+...
+```
 
 ---
 
@@ -95,34 +128,41 @@ Please review our [Git Commit & Push Workflow Guide (GIT_WORKFLOW.md)](GIT_WORKF
 ```
 convert-md-to-pdf/
 ├── bin/
-│   └── cli.js               # Clean CLI executable
+│   └── cli.js               # CLI executable with watch & format options
 ├── src/
-│   ├── core/                # Shared conversion engine
-│   │   ├── index.js         # Core library API
-│   │   ├── parser.js        # Markdown, Math & TOC parser
-│   │   ├── templates.js     # Theme manager & HTML templates
-│   │   └── utils.js         # Preprocessors & helper utilities
+│   ├── core/                # Shared modular conversion engine
+│   │   ├── themes/          # Modular Theme CSS collection
+│   │   │   ├── index.js     # Theme registry & font override builder
+│   │   │   ├── cover.js     # Cover page CSS
+│   │   │   ├── modern.js    # Modern blue theme
+│   │   │   ├── dark.js      # Dark slate theme
+│   │   │   ├── academic.js  # Academic serif theme
+│   │   │   ├── github.js    # GitHub light theme
+│   │   │   ├── ebook.js     # E-Book paper theme
+│   │   │   ├── cyberpunk.js # Cyberpunk neon dark theme
+│   │   │   └── minimal.js   # Minimal monochrome theme
+│   │   ├── frontmatter.js   # YAML front matter parser
+│   │   ├── cover.js         # Cover page generator
+│   │   ├── toc.js           # Dotted leader line TOC generator
+│   │   ├── sanitizer.js     # HTML sanitizer & escaping
+│   │   ├── utils.js         # Preprocessors & helper re-exports
+│   │   ├── parser.js        # Pipeline parser (Markdown -> HTML)
+│   │   ├── templates.js     # HTML document template builder
+│   │   └── index.js         # Main library API entrypoint
 │   └── browser/             # Headless browser rendering engine
-│       └── renderer.js      # Headless Chrome/Edge launcher & PDF printer
+│       └── renderer.js      # Puppeteer Chrome/Edge launcher & PDF worker pool
 ├── extension/               # Browser Extension (Manifest V3)
 │   ├── manifest.json
 │   ├── background/          # Service worker & context menus
 │   ├── content/             # Content script for raw MD pages
-│   ├── popup/               # Extension Popup UI (File, Paste, Page, History)
-│   ├── preview/             # Print Preview & PDF export page
+│   ├── popup/               # Extension Popup UI (Batch file, Paste, Page, History)
+│   ├── preview/             # Print Preview & PDF/HTML export page
 │   ├── lib/                 # Vendor libraries (marked, mermaid, katex)
 │   └── icons/               # Extension icons (16, 48, 128)
-├── store-assets/            # Chrome Web Store submission kit
-│   ├── icons/               # Pixel-perfect 128x128 store icons
-│   ├── banners/             # Pixel-perfect 440x280 promo banners
-│   ├── screenshots/         # Pixel-perfect 1280x800 screenshots
-│   └── STORE_LISTING.md     # Store listing metadata & submission guide
+├── tests/                   # Standalone test suite (7/7 PASS)
+│   └── index.test.js
+├── dist/                    # Built Chrome Extension zip artifacts
 ├── examples/                # Usage examples & custom CSS templates
-│   ├── sample.md
-│   └── custom.css
-├── scripts/                 # Build & maintenance scripts
-│   ├── build-extension.js   # Extension bundler script
-│   └── fetch-vendor-libs.js # Vendor library sync script
 ├── package.json
 ├── README.md
 ├── PRIVACY_POLICY.md

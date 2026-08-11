@@ -25,19 +25,22 @@ Convert Markdown files, raw text, and web documentation into high-quality, beaut
 Markdown to PDF Converter is a lightweight, privacy-focused extension that transforms your Markdown code, technical documentation, SRS reports, and notes into publication-ready PDFs with 1-click.
 
 🌟 KEY FEATURES:
-• 📊 Native Mermaid.js Diagrams: Full support for sequence diagrams, flowcharts, class diagrams, gantt charts, and state diagrams.
+• 📑 Auto Cover Page Generator: Auto-build document report cover pages with title, subtitle, author, and date.
+• 📌 Dotted Leader Line TOC: Publication-grade Table of Contents with dotted leader lines (...) and clickable anchor links.
+• 📊 Native Mermaid.js Diagrams: Full support for sequence diagrams (with text wrapping), flowcharts, class diagrams, and gantt charts.
 • 📐 LaTeX Math Equations: Beautiful inline and display math formula rendering powered by KaTeX ($E = mc^2$).
-• 🎨 4 Preset Themes: Choose between Modern (Navy Report), Dark Mode, Academic (Serif Paper), and Minimal.
-• 📁 Multiple Input Methods: Drag & drop .md files, paste raw text, or convert the active tab content automatically.
+• 🎨 7 Preset Themes: Choose between Modern, Dark Mode, Academic, GitHub, E-Book, Cyberpunk, and Minimal.
+• 🔤 Open-Source Font Selector: Select your preferred typography (Inter, Roboto, Lora, Merriweather, JetBrains Mono, Fira Code).
+• 📁 Multiple Input Methods: Drag & drop single or batch .md files, paste raw text, or convert active tab content automatically.
 • 🖱️ Right-Click Context Menu: Highlight any Markdown text on any website and right-click to convert to PDF immediately.
 • 🌐 GitHub Raw MD Integration: Displays an automatic floating "Convert to PDF" button on GitHub raw file pages.
 • 🔒 100% Private & Offline: Runs entirely inside your browser. No registration, no cloud servers, and no data tracking.
 
 🚀 HOW TO USE:
 1. Click the extension icon in your toolbar.
-2. Drag & drop a .md file or paste your Markdown content.
-3. Select your desired theme (Modern, Dark, Academic, Minimal) and paper size (A4, Letter, A3).
-4. Click "Preview & Export PDF" to view and print your vector PDF file!
+2. Drag & drop .md file(s) or paste your Markdown content.
+3. Select your desired theme (Modern, Dark, GitHub, Cyberpunk...) and font (Inter, Roboto, Lora...).
+4. Click "Preview & Export PDF" to view and print your vector PDF or download static HTML!
 
 Perfect for developers, technical writers, students, engineers, and researchers!
 ```
@@ -49,10 +52,13 @@ Chuyển đổi file Markdown, văn bản thô và tài liệu web sang file PDF
 Markdown to PDF Converter là tiện ích mở rộng nhẹ, an toàn bảo mật, giúp biến các file Markdown, tài liệu kỹ thuật SRS, báo cáo và ghi chú của bạn thành file PDF chuẩn in ấn chỉ với 1 cú nhấp chuột.
 
 🌟 TÍNH NĂNG NỔI BẬT:
+• 📑 Trang bìa báo cáo tự động: Tự tạo trang bìa sang trọng hiển thị Tên tài liệu, Tác giả, Ngày lập và Subtitle.
+• 📌 Mục lục đường chấm (Dotted TOC): Tạo mục lục chuẩn xuất bản với đường chấm nối số trang và liên kết anchor link.
 • 📊 Sơ đồ Mermaid.js: Hỗ trợ đầy đủ sơ đồ trình tự (sequence diagram), lưu đồ (flowchart), class diagram, gantt chart...
 • 📐 Công thức toán LaTeX: Hiển thị công thức toán học nội dòng và khối công thức sắc nét nhờ KaTeX.
-• 🎨 4 Giao diện (Themes): Tùy chọn giao diện Modern (Báo cáo hiện đại), Dark Mode (Chế độ tối), Academic (Viện học thuật) và Minimal (Tối giản).
-• 📁 Đa dạng phương thức nhập: Kéo thả file .md, dán văn bản thô hoặc tự động lấy nội dung trang web đang mở.
+• 🎨 7 Giao diện (Themes): Modern, Dark Mode, Academic, GitHub, E-Book, Cyberpunk và Minimal.
+• 🔤 Bộ chọn Font chữ mở rộng: Tùy chọn font chữ chuyên nghiệp (Inter, Roboto, Lora, Merriweather, JetBrains Mono, Fira Code).
+• 📁 Đa dạng phương thức nhập: Kéo thả một hoặc nhiều file .md, dán văn bản thô hoặc tự động lấy nội dung trang web đang mở.
 • 🖱️ Menu chuột phải (Context Menu): Bôi đen văn bản Markdown trên trang web bất kỳ -> Chuột phải để chuyển sang PDF ngay lập tức.
 • 🌐 Tích hợp GitHub Raw File: Hỗ trợ nút bấm nổi "Convert to PDF" tiện lợi khi mở file .md raw trên GitHub.
 • 🔒 Bảo mật 100% Offline: Xử lý hoàn toàn cục bộ trên trình duyệt, không tải dữ liệu lên máy chủ bên ngoài.
@@ -60,8 +66,8 @@ Markdown to PDF Converter là tiện ích mở rộng nhẹ, an toàn bảo mậ
 🚀 HƯỚNG DẪN SỬ DỤNG:
 1. Nhấn vào biểu tượng tiện ích trên thanh công cụ Chrome.
 2. Kéo thả file .md hoặc dán đoạn mã Markdown.
-3. Chọn Theme mong muốn (Modern, Dark, Academic...) và khổ giấy (A4, Letter...).
-4. Nhấn "Preview & Export PDF" để xem trước và lưu file PDF!
+3. Chọn Theme mong muốn (Modern, Dark, GitHub, Cyberpunk...) và font chữ.
+4. Nhấn "Preview & Export PDF" để xem trước và lưu file PDF hoặc tải file HTML!
 ```
 
 ---
