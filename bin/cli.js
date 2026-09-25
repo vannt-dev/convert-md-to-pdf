@@ -9,7 +9,7 @@ const packageJson = require('../package.json');
 const program = new Command();
 
 program
-  .name('convert-md-to-pdf')
+  .name('md-pdf-studio')
   .alias('md2pdf')
   .description('High-quality Markdown to PDF converter CLI with Mermaid, Math, TOC, Custom CSS, and Batch conversion.')
   .version(packageJson.version, '-v, --version', 'Output tool version')
