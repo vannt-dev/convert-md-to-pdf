@@ -4,7 +4,8 @@
 
 [![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-Install_Extension-4285F4?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/markdown-to-pdf-converter/djikikejkmkklfeklfmddaadilhahamj)
 [![Chrome Web Store users](https://img.shields.io/chrome-web-store/users/djikikejkmkklfeklfmddaadilhahamj?label=Chrome%20users)](https://chromewebstore.google.com/detail/markdown-to-pdf-converter/djikikejkmkklfeklfmddaadilhahamj)
-![npm version](https://img.shields.io/npm/v/convert-md-to-pdf?color=blue)
+[![npm version](https://img.shields.io/npm/v/md-pdf-studio?color=blue)](https://www.npmjs.com/package/md-pdf-studio)
+[![npm downloads](https://img.shields.io/npm/d18m/md-pdf-studio)](https://www.npmjs.com/package/md-pdf-studio)
 ![Browser Extension](https://img.shields.io/badge/Extension-Manifest_V3-green)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -54,27 +55,32 @@ You can install the official published extension directly with 1-click:
 ## 💻 CLI Installation & Usage
 
 ### Global Installation via npm / npx
+The CLI is published on npm as [`md-pdf-studio`](https://www.npmjs.com/package/md-pdf-studio):
 ```bash
-npm install -g convert-md-to-pdf
+npm install -g md-pdf-studio
 ```
 or run directly with `npx`:
 ```bash
-npx convert-md-to-pdf input.md
+npx md-pdf-studio input.md
 ```
+A global install provides the `md-pdf-studio` command and the `md2pdf` and `convert-md-to-pdf` aliases.
+PDF output uses a locally installed Google Chrome, Microsoft Edge or Chromium.
+
+> The npm package named `convert-md-to-pdf` is an unrelated project; install `md-pdf-studio` for this tool.
 
 ### CLI Examples:
 ```bash
 # Convert a Markdown file with Cover Page, Auto TOC & Cyberpunk Theme
-npx convert-md-to-pdf input.md --cover --toc -t cyberpunk --font "Fira Code" -o output.pdf
+npx md-pdf-studio input.md --cover --toc -t cyberpunk --font "Fira Code" -o output.pdf
 
 # Watch file and auto-recompile on save
-npx convert-md-to-pdf input.md -w -f html
+npx md-pdf-studio input.md -w -f html
 
 # Batch convert multiple files to an output directory
-npx convert-md-to-pdf file1.md file2.md -o output_dir/
+npx md-pdf-studio file1.md file2.md -o output_dir/
 
 # Convert entire directory of .md files
-npx convert-md-to-pdf ./docs/ -o ./dist/
+npx md-pdf-studio ./docs/ -o ./dist/
 ```
 
 ---
