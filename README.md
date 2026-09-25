@@ -3,6 +3,7 @@
 > A powerful CLI tool and **Browser Extension (Manifest V3)** to convert Markdown (`.md`) files, raw text, or web pages into beautifully styled, high-quality PDF & static HTML documents. Built with support for **Cover Pages**, **Dotted Leader Line Table of Contents (TOC)**, **Mermaid.js diagrams**, **LaTeX Math**, **GitHub Callout Alerts**, **Custom CSS Injection**, **7 Preset Themes**, and **Open-Source Font Selection**.
 
 [![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-Install_Extension-4285F4?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/markdown-to-pdf-converter/djikikejkmkklfeklfmddaadilhahamj)
+[![Chrome Web Store users](https://img.shields.io/chrome-web-store/users/djikikejkmkklfeklfmddaadilhahamj?label=Chrome%20users)](https://chromewebstore.google.com/detail/markdown-to-pdf-converter/djikikejkmkklfeklfmddaadilhahamj)
 ![npm version](https://img.shields.io/npm/v/convert-md-to-pdf?color=blue)
 ![Browser Extension](https://img.shields.io/badge/Extension-Manifest_V3-green)
 ![License](https://img.shields.io/badge/license-MIT-green)
