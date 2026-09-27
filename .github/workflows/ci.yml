@@ -2,9 +2,11 @@ name: CI & Extension Build Checks
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
+permissions:
+  contents: read
 
 jobs:
   build-and-test:
@@ -15,20 +17,31 @@ jobs:
         node-version: [18.x, 20.x]
 
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
 
-    - name: Install Dependencies
-      run: npm ci
+      - name: Install Dependencies
+        run: npm ci
 
-    - name: Run CLI Test Engine
-      run: npm test
+      - name: Run CLI Test Engine
+        run: npm test
 
-    - name: Run Extension Build
-      run: node scripts/build-extension.js
+      - name: Run Extension Build
+        run: node scripts/build-extension.js
+  commits:
+    uses: vannt-dev/repokeeper/.github/workflows/commitlint.yml@v0
+  node:
+    uses: vannt-dev/repokeeper/.github/workflows/stack-node.yml@v0
+    with:
+      node-versions: '["22","24"]'
+      os: '["ubuntu-latest"]'
+      package-manager: npm
+      install-command: npm ci
+      cache: npm
+      scripts: '["test"]'
