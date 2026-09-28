@@ -68,3 +68,60 @@ jobs:
           files: |
             dist/extension-*.zip
             dist/extension-latest.zip
+
+  npm:
+    name: Publish to npm
+    needs: release
+    # Tag pushes publish their version; a manual run publishes the tag given in tag_name
+    if: ${{ github.ref_type == 'tag' || inputs.tag_name != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Resolve Tag
+        env:
+          INPUT_TAG: ${{ inputs.tag_name }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then TAG="$GITHUB_REF_NAME"; else TAG="$INPUT_TAG"; fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Checkout Tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      # Trusted publishing needs npm 11.5 or newer, which ships with Node 24
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+          cache: 'npm'
+
+      - name: Check Version
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "v$VERSION" != "$TAG" ]; then
+            echo "::error::$TAG does not match package.json version $VERSION"
+            exit 1
+          fi
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "::notice::$NAME@$VERSION is already on npm; nothing to publish"
+            echo "SKIP=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install Dependencies
+        if: env.SKIP != 'true'
+        run: npm ci
+
+      - name: Run Test Suite
+        if: env.SKIP != 'true'
+        run: npm test
+
+      # npm signs in through trusted publishing (OIDC), so no token secret is needed
+      - name: Publish
+        if: env.SKIP != 'true'
+        run: npm publish --provenance --access public
