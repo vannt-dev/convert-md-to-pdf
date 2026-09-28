@@ -134,16 +134,18 @@ landscape: false
 This project follows standard **Git Flow** branching and automated release publishing:
 
 ### 🔀 Branching Strategy
-- **`main`**: Production-ready branch. Stores stable releases. Merging code into `main` automatically triggers a GitHub Release.
+- **`main`**: Production-ready branch. Stores stable releases. Pushing a version tag `v*` from `main` triggers a release.
 - **`develop`**: Active development branch. Daily commits, feature additions, and refactoring take place here.
 
 ### 🚀 Automated Release Pipeline
-Whenever code is merged from `develop` into `main` (or a version tag `v*` is pushed), GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)) automatically:
-1. Runs full unit test suite (`npm test`).
+Whenever a version tag `v*` is pushed, GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)) builds from that tag and automatically:
+1. Checks that the tag matches the version in `package.json` and `extension/manifest.json`, then runs the full unit test suite (`npm test`).
 2. Bundles cross-platform extension zip artifacts (`dist/extension-vX.Y.Z.zip`).
 3. Auto-generates release notes from commit history.
 4. Publishes a new official **[GitHub Release](https://github.com/vannt-dev/convert-md-to-pdf/releases)** with downloadable ZIP binaries attached!
-5. On a `v*` tag, publishes [`md-pdf-studio`](https://www.npmjs.com/package/md-pdf-studio) to npm with provenance, through npm trusted publishing (no token secret). The tag must match the `package.json` version; a version already on npm is skipped. To publish an existing tag, run the workflow manually with `tag_name`.
+5. Publishes [`md-pdf-studio`](https://www.npmjs.com/package/md-pdf-studio) to npm with provenance, through npm trusted publishing (no token secret). A version already on npm is skipped.
+
+To release an existing tag again (for example after a failed run), run the workflow manually with `tag_name`.
 
 ### 💡 1-Click CLI Release Command
 You can also bump version and trigger a release with a single CLI command:

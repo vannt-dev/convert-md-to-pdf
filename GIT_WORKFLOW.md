@@ -94,12 +94,11 @@ Sau đó truy cập GitHub repository để mở **Pull Request (PR)** merge và
 
 ## 🏷️ 4. Quy trình Đóng gói & Release Phiên bản mới
 
-Hệ thống hỗ trợ 2 phương án phát hành Release hoàn toàn tự động:
+Release chỉ chạy khi có tag `vX.Y.Z` được push; merge hay push lên `main` không tạo release. Khi có tag, GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)) build từ đúng tag đó: kiểm tra tag khớp version trong `package.json` và `extension/manifest.json`, chạy test, build file ZIP, đăng Release lên GitHub đính kèm `extension-vX.Y.Z.zip`, rồi publish `md-pdf-studio` lên npm.
 
-### Cách 1: Tự động Release khi Merge `develop` vào `main` (Khuyên dùng)
-1. Khi hoàn tất phát triển tính năng trên `develop`, mở Pull Request hoặc merge `develop` vào `main`.
-2. Push lên `main`: `git push origin main`
-3. GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)) sẽ tự động đọc số version từ `package.json`, chạy test, build file ZIP và tự đăng bài Release lên GitHub đính kèm file nén `extension-vX.Y.Z.zip`!
+### Cách 1: Nâng version qua Pull Request rồi tag (Khuyên dùng)
+1. Mở Pull Request nâng version trong `package.json`, `package-lock.json` và `extension/manifest.json`, rồi merge vào `main`.
+2. Tag và push từ `main`: `git tag -a vX.Y.Z -m "Release vX.Y.Z" && git push origin vX.Y.Z`
 
 ### Cách 2: Chạy lệnh Release 1-Click từ CLI
 ```bash
