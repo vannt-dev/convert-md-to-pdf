@@ -19,33 +19,24 @@ function buildMarkedRenderer(headingsMap) {
   const renderer = new marked.Renderer();
   const originalCodeRenderer = renderer.code.bind(renderer);
 
-  renderer.code = function(codeArg, infostringArg, escapedArg) {
-    let text = '';
-    let lang = '';
-
-    if (typeof codeArg === 'object' && codeArg !== null) {
-      text = codeArg.text || '';
-      lang = codeArg.lang || '';
-    } else {
-      text = codeArg || '';
-      lang = infostringArg || '';
-    }
+  renderer.code = function(token) {
+    const text = token.text || '';
+    const lang = token.lang || '';
 
     if (lang === 'mermaid') {
       return `<div class="mermaid-container"><pre class="mermaid">${text}</pre></div>`;
     }
-    
+
     if (text.includes('┌') && text.includes('└')) {
       return `<div class="ui-mockup-container"><pre class="ui-mockup"><code>${escapeHtml(text)}</code></pre></div>`;
     }
 
-    return originalCodeRenderer.call(this, codeArg, infostringArg, escapedArg);
+    return originalCodeRenderer.call(this, token);
   };
 
-  renderer.heading = function(text, level, raw, slugger) {
-    const rawClean = raw ? raw.trim() : text;
-    const slug = headingsMap.get(rawClean) || (slugger ? slugger.slug(raw) : `heading-${level}`);
-    return `<h${level} id="${slug}">${text}</h${level}>`;
+  renderer.heading = function({ tokens, depth, text }) {
+    const slug = headingsMap.get(text.trim()) || `heading-${depth}`;
+    return `<h${depth} id="${slug}">${this.parser.parseInline(tokens)}</h${depth}>`;
   };
 
   return renderer;

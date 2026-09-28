@@ -46,16 +46,16 @@
     "url": "https://github.com/vannt-dev/convert-md-to-pdf/issues"
   },
   "dependencies": {
-    "commander": "^12.1.0",
-    "marked": "^12.0.2"
+    "commander": "^15.0.0",
+    "marked": "^18.0.14"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=22.12.0"
   },
   "devDependencies": {
-    "adm-zip": "^0.6.0",
     "@commitlint/cli": "^21.2.3",
     "@commitlint/config-conventional": "^21.2.3",
+    "adm-zip": "^0.6.0",
     "lefthook": "^2.1.14"
   }
 }
