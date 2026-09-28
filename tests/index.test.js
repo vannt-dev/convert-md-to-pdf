@@ -104,6 +104,16 @@ async function runTests() {
     assert.ok(html.includes('font-family: \'Lora\''));
   });
 
+  // 6b. Markdown rendering through the custom renderer
+  test('parser.parseMarkdownToHtml: renders headings with TOC ids and custom code blocks', () => {
+    const md = '# Chapter 1\n\n## Sec **bold**\n\n```mermaid\ngraph TD\n```\n\n```js\nx<1\n```';
+    const html = parseMarkdownToHtml(md, { toc: true });
+    assert.ok(html.includes('<h1 id="chapter-1">Chapter 1</h1>'));
+    assert.ok(html.includes('<h2 id="sec-bold">Sec <strong>bold</strong></h2>'));
+    assert.ok(html.includes('<pre class="mermaid">graph TD</pre>'));
+    assert.ok(html.includes('<code class="language-js">x&lt;1'));
+  });
+
   // 7. Converter HTML Export
   await asyncTest('core.convertMarkdownToPdf: exports HTML file directly with format option', async () => {
     const samplePath = path.join(__dirname, '../examples/sample.md');
