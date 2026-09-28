@@ -143,6 +143,7 @@ Whenever code is merged from `develop` into `main` (or a version tag `v*` is pus
 2. Bundles cross-platform extension zip artifacts (`dist/extension-vX.Y.Z.zip`).
 3. Auto-generates release notes from commit history.
 4. Publishes a new official **[GitHub Release](https://github.com/vannt-dev/convert-md-to-pdf/releases)** with downloadable ZIP binaries attached!
+5. On a `v*` tag, publishes [`md-pdf-studio`](https://www.npmjs.com/package/md-pdf-studio) to npm with provenance, through npm trusted publishing (no token secret). The tag must match the `package.json` version; a version already on npm is skipped. To publish an existing tag, run the workflow manually with `tag_name`.
 
 ### 💡 1-Click CLI Release Command
 You can also bump version and trigger a release with a single CLI command:
