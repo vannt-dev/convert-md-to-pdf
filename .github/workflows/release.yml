@@ -2,16 +2,13 @@ name: Automated GitHub Release
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag name to release (e.g. v1.1.0)'
-        required: false
-        default: ''
+        description: 'Existing tag to release again (e.g. v2.0.0)'
+        required: true
 
 permissions:
   contents: write
@@ -20,11 +17,23 @@ jobs:
   release:
     name: Build & Publish Release
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
 
     steps:
-      - name: Checkout Repository
+      - name: Resolve Tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag_name }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then TAG="$GITHUB_REF_NAME"; else TAG="$INPUT_TAG"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      # Build from the tag, not from the branch a manual run was started on
+      - name: Checkout Tag
         uses: actions/checkout@v7
         with:
+          ref: ${{ steps.tag.outputs.tag }}
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -32,6 +41,17 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+
+      - name: Check Versions
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          EXT=$(node -p "require('./extension/manifest.json').version")
+          if [ "v$PKG" != "$TAG" ] || [ "v$EXT" != "$TAG" ]; then
+            echo "::error::$TAG does not match package.json ($PKG) and extension/manifest.json ($EXT)"
+            exit 1
+          fi
 
       - name: Install Dependencies
         run: npm ci
@@ -42,28 +62,16 @@ jobs:
       - name: Build Extension Artifacts
         run: npm run build:extension
 
-      - name: Determine Target Version Tag
-        id: get_version
-        run: |
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            TAG=${GITHUB_REF#refs/tags/}
-          elif [ -n "${{ github.event.inputs.tag_name }}" ]; then
-            TAG="${{ github.event.inputs.tag_name }}"
-          else
-            VER=$(node -p "require('./package.json').version")
-            TAG="v$VER"
-          fi
-          echo "VERSION_TAG=$TAG" >> $GITHUB_ENV
-
       - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ env.VERSION_TAG }}
-          name: 🎉 Release ${{ env.VERSION_TAG }}
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: 🎉 Release ${{ steps.tag.outputs.tag }}
           generate_release_notes: true
           draft: false
           prerelease: false
-          make_latest: "true"
+          # Re-running an older tag must not take "Latest" from a newer release
+          make_latest: legacy
           overwrite_files: true
           files: |
             dist/extension-*.zip
@@ -72,25 +80,16 @@ jobs:
   npm:
     name: Publish to npm
     needs: release
-    # Tag pushes publish their version; a manual run publishes the tag given in tag_name
-    if: ${{ github.ref_type == 'tag' || inputs.tag_name != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
 
     steps:
-      - name: Resolve Tag
-        env:
-          INPUT_TAG: ${{ inputs.tag_name }}
-        run: |
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then TAG="$GITHUB_REF_NAME"; else TAG="$INPUT_TAG"; fi
-          echo "TAG=$TAG" >> "$GITHUB_ENV"
-
       - name: Checkout Tag
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ needs.release.outputs.tag }}
 
       # Trusted publishing needs npm 11.5 or newer, which ships with Node 24
       - name: Setup Node.js
@@ -100,14 +99,10 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: 'npm'
 
-      - name: Check Version
+      - name: Check npm
         run: |
           NAME=$(node -p "require('./package.json').name")
           VERSION=$(node -p "require('./package.json').version")
-          if [ "v$VERSION" != "$TAG" ]; then
-            echo "::error::$TAG does not match package.json version $VERSION"
-            exit 1
-          fi
           if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
             echo "::notice::$NAME@$VERSION is already on npm; nothing to publish"
             echo "SKIP=true" >> "$GITHUB_ENV"
