@@ -1,6 +1,6 @@
 {
   "lockVersion": 1,
-  "standard": "1.2.1",
+  "standard": "1.4.1",
   "entries": [
     {
       "id": "block:.gitattributes#editorconfig",
@@ -45,7 +45,7 @@
     {
       "id": "file:.github/dependabot.yml",
       "module": "deps",
-      "hash": "241cc7d23efd39f43ac51801e44a235f1e774737bfb9db007581d75d6c858039",
+      "hash": "963af5766e12381d12a77362fc3153e4e0e9efcf89b9e91b65ea439179dcfd24",
       "target": {
         "kind": "file",
         "path": ".github/dependabot.yml"
@@ -177,6 +177,18 @@
         "keyPath": [
           "devDependencies",
           "lefthook"
+        ]
+      }
+    },
+    {
+      "id": "yaml:.github/workflows/ci.yml#[\"concurrency\"]",
+      "module": "ci",
+      "hash": "1f382fb1b73ab99e2883b98aae10e56692a59ccaaa72d990ff8fdae435f46cd6",
+      "target": {
+        "kind": "yaml",
+        "path": ".github/workflows/ci.yml",
+        "keyPath": [
+          "concurrency"
         ]
       }
     },
