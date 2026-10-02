@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>PDF Print Preview</title>
+  
+  <!-- Preload fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&family=Merriweather:wght@400;700&display=swap" rel="stylesheet">
+  
+  <!-- Local Vendor Scripts -->
+  <link rel="stylesheet" href="../lib/katex.min.css">
+  <script src="../lib/katex.min.js"></script>
+  <script src="../lib/marked.min.js"></script>
+  <script src="../lib/mermaid.min.js"></script>
+
+  <style id="theme-style"></style>
+
+  <style>
+    /* Toolbar & Print setup */
+    .no-print {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      background: #0f172a;
+      border-bottom: 1px solid #1e293b;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .toolbar-left, .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .toolbar-title {
+      font-weight: 700;
+      color: #38bdf8;
+      font-size: 15px;
+    }
+
+    .toolbar-select {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #f8fafc;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+
+    .print-tip {
+      font-size: 11.5px;
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.1);
+      padding: 4px 10px;
+      border-radius: 4px;
+      border: 1px solid rgba(56, 189, 248, 0.25);
+    }
+
+    .btn-secondary-action {
+      background: #1e293b;
+      color: #38bdf8;
+      border: 1px solid #0284c7;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 12.5px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+    }
+
+    .btn-secondary-action:hover {
+      background: #0284c7;
+      color: #ffffff;
+    }
+
+    .btn-print {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      color: #ffffff;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+    }
+
+    .btn-print:hover {
+      opacity: 0.9;
+    }
+
+    /* Custom Print Header/Footer for clean PDF output */
+    .custom-print-footer {
+      display: none;
+    }
+
+    @media print {
+      .no-print {
+        display: none !important;
+      }
+      body {
+        padding: 0 !important;
+      }
+      .custom-print-footer {
+        display: flex !important;
+        justify-content: space-between;
+        align-items: center;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        font-size: 9px;
+        color: #64748b;
+        border-top: 1px solid #e2e8f0;
+        padding: 4px 0;
+        font-family: 'Inter', sans-serif;
+      }
+    }
+
+    /* Main document container */
+    #document-container {
+      max-width: 900px;
+      margin: 20px auto;
+      background: #ffffff;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    }
+
+    @media print {
+      #document-container {
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Fixed Top Toolbar (Hidden on Print) -->
+  <div class="no-print">
+    <div class="toolbar-left">
+      <span class="toolbar-title">📄 PDF Print Preview</span>
+      <select id="preview-theme" class="toolbar-select">
+        <option value="modern">Theme: Modern</option>
+        <option value="dark">Theme: Dark Mode</option>
+        <option value="academic">Theme: Academic</option>
+        <option value="github">Theme: GitHub</option>
+        <option value="ebook">Theme: E-Book</option>
+        <option value="cyberpunk">Theme: Cyberpunk</option>
+        <option value="minimal">Theme: Minimal</option>
+      </select>
+      <select id="preview-font" class="toolbar-select">
+        <option value="Inter">Font: Inter</option>
+        <option value="Roboto">Font: Roboto</option>
+        <option value="Lora">Font: Lora</option>
+        <option value="Merriweather">Font: Merriweather</option>
+        <option value="JetBrains Mono">Font: JetBrains Mono</option>
+        <option value="Fira Code">Font: Fira Code</option>
+      </select>
+      <select id="preview-size" class="toolbar-select">
+        <option value="A4">Size: A4</option>
+        <option value="Letter">Size: Letter</option>
+        <option value="A3">Size: A3</option>
+        <option value="Legal">Size: Legal</option>
+      </select>
+    </div>
+
+    <div class="toolbar-right">
+      <span class="print-tip" title="Bỏ chọn 'Headers & footers' trong tùy chọn in của Chrome để ẩn link URL">💡 Bỏ chọn 'Headers & footers' khi in</span>
+      <button id="btn-download-html" class="btn-secondary-action" title="Tải trực tiếp file HTML tĩnh">
+        📥 Download HTML
+      </button>
+      <button id="btn-trigger-print" class="btn-print" title="Mở hộp thoại Lưu PDF / In">
+        🖨️ Save as PDF
+      </button>
+    </div>
+  </div>
+
+  <!-- Document Output -->
+  <div id="document-container">
+    <div id="content">Loading document...</div>
+  </div>
+
+  <!-- Custom Print Footer Element -->
+  <div class="custom-print-footer">
+    <span>📄 Convert MD to PDF Extension</span>
+    <span id="print-footer-title">Document</span>
+  </div>
+
+  <script src="preview.js"></script>
+</body>
+</html>
