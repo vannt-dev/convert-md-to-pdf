@@ -28,6 +28,7 @@ program
   .option('-k, --keep-html', 'Keep temporary HTML file after conversion', false)
   .option('--no-mermaid', 'Disable Mermaid diagram rendering')
   .option('--no-katex', 'Disable KaTeX math formula rendering')
+  .option('--no-highlight', 'Disable syntax highlighting of code blocks')
   .option('-b, --browser <path>', 'Custom Chrome/Edge executable path')
   .action(async (inputArgs, options) => {
     try {
@@ -89,6 +90,7 @@ program
             keepHtml: options.keepHtml,
             mermaid: options.mermaid,
             katex: options.katex,
+            highlight: options.highlight,
             executablePath: options.browser
           });
 

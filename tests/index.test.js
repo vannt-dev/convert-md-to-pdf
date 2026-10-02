@@ -125,7 +125,31 @@ async function runTests() {
     assert.ok(html.includes('<h1 id="chapter-1">Chapter 1</h1>'));
     assert.ok(html.includes('<h2 id="sec-bold">Sec <strong>bold</strong></h2>'));
     assert.ok(html.includes('<pre class="mermaid">graph TD</pre>'));
-    assert.ok(html.includes('<code class="language-js">x&lt;1'));
+    assert.ok(html.includes('<code class="hljs language-js">x&lt;<span class="hljs-number">1</span>'));
+  });
+
+  // 6c. Syntax highlighting
+  test('parser.parseMarkdownToHtml: highlights fenced code that names a known language', () => {
+    const md = '```js\nconst a = "<b>";\n```\n\n```\nconst plain = 1;\n```\n\n```nosuchlang\nconst other = 1;\n```';
+    const html = parseMarkdownToHtml(md);
+    assert.ok(html.includes('<span class="hljs-keyword">const</span>'));
+    assert.ok(html.includes('<span class="hljs-string">&quot;&lt;b&gt;&quot;</span>'));
+    assert.ok(html.includes('<pre><code>const plain = 1;'));
+    assert.ok(html.includes('<code class="language-nosuchlang">const other = 1;'));
+  });
+
+  test('parser.parseMarkdownToHtml: highlight can be turned off by option or front matter', () => {
+    const md = '```js\nconst a = 1;\n```';
+    assert.ok(!parseMarkdownToHtml(md, { highlight: false }).includes('<span class="hljs-keyword">'));
+    assert.ok(!parseMarkdownToHtml('---\nhighlight: false\n---\n' + md).includes('<span class="hljs-keyword">'));
+    assert.ok(parseMarkdownToHtml(md).includes('<span class="hljs-keyword">'));
+  });
+
+  test('themes.getThemeStyles: token colours follow the code block background', () => {
+    const { getThemeStyles } = require('../src/core/themes');
+    assert.ok(getThemeStyles('modern').includes('.hljs-doctag, .hljs-template-tag { color: #ff7b72; }'));
+    assert.ok(getThemeStyles('github').includes('.hljs-doctag, .hljs-template-tag { color: #cf222e; }'));
+    assert.ok(getThemeStyles('nosuchtheme').includes('color: #ff7b72;'));
   });
 
   // 7. Converter HTML Export
