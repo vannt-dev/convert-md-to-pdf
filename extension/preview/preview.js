@@ -111,6 +111,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return `<div class="ui-mockup-container"><pre class="ui-mockup"><code>${escapeHtml(text)}</code></pre></div>`;
       }
 
+      // Only fences that name a language are coloured: guessing one gets short snippets wrong.
+      const language = lang.trim().split(/\s+/)[0];
+      if (typeof hljs !== 'undefined' && language && hljs.getLanguage(language)) {
+        const highlighted = hljs.highlight(text, { language, ignoreIllegals: true }).value;
+        return `<pre><code class="hljs language-${escapeHtml(language)}">${highlighted}</code></pre>\n`;
+      }
+
       return originalCodeRenderer.call(this, codeArg, infostringArg, escapedArg);
     };
 
@@ -468,6 +475,37 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
     }
 
-    return pageCss + '\n' + coverCss + '\n' + fontOverride + styles + '\n' + tocCss + '\n' + customCss;
+    // Syntax highlighting token colours, picked by the code block background of the theme.
+    // Keep in sync with src/core/themes/highlight.js.
+    const lightCodeBlocks = ['academic', 'github', 'minimal'].includes(theme);
+    const tokenCss = lightCodeBlocks ? `
+      pre code { background: none; padding: 0; border: none; }
+      .hljs-comment, .hljs-quote, .hljs-meta { color: #6e7781; font-style: italic; }
+      .hljs-keyword, .hljs-selector-tag, .hljs-doctag, .hljs-template-tag { color: #cf222e; }
+      .hljs-string, .hljs-regexp, .hljs-char.escape_ { color: #0a3069; }
+      .hljs-number, .hljs-literal, .hljs-attr, .hljs-attribute, .hljs-variable, .hljs-template-variable, .hljs-symbol, .hljs-bullet { color: #0550ae; }
+      .hljs-title, .hljs-section, .hljs-selector-id, .hljs-selector-class { color: #8250df; }
+      .hljs-type, .hljs-built_in, .hljs-params { color: #953800; }
+      .hljs-name, .hljs-tag { color: #116329; }
+      .hljs-addition { color: #116329; background-color: #dafbe1; }
+      .hljs-deletion { color: #82071e; background-color: #ffebe9; }
+      .hljs-emphasis { font-style: italic; }
+      .hljs-strong { font-weight: 700; }
+    ` : `
+      pre code { background: none; padding: 0; border: none; }
+      .hljs-comment, .hljs-quote, .hljs-meta { color: #8b949e; font-style: italic; }
+      .hljs-keyword, .hljs-selector-tag, .hljs-doctag, .hljs-template-tag { color: #ff7b72; }
+      .hljs-string, .hljs-regexp, .hljs-char.escape_ { color: #a5d6ff; }
+      .hljs-number, .hljs-literal, .hljs-attr, .hljs-attribute, .hljs-variable, .hljs-template-variable, .hljs-symbol, .hljs-bullet { color: #79c0ff; }
+      .hljs-title, .hljs-section, .hljs-selector-id, .hljs-selector-class { color: #d2a8ff; }
+      .hljs-type, .hljs-built_in, .hljs-params { color: #ffa657; }
+      .hljs-name, .hljs-tag { color: #7ee787; }
+      .hljs-addition { color: #aff5b4; background-color: #033a16; }
+      .hljs-deletion { color: #ffdcd7; background-color: #67060c; }
+      .hljs-emphasis { font-style: italic; }
+      .hljs-strong { font-weight: 700; }
+    `;
+
+    return pageCss + '\n' + coverCss + '\n' + fontOverride + styles + tokenCss + '\n' + tocCss + '\n' + customCss;
   }
 });
