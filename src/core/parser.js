@@ -1,4 +1,5 @@
 const { marked } = require('marked');
+const hljs = require('highlight.js/lib/common');
 const { 
   parseFrontMatter, 
   generateCoverPage, 
@@ -13,9 +14,10 @@ const { getHtmlTemplate } = require('./templates');
 /**
  * Builds marked custom renderer for diagrams, UI mockups, and headings
  * @param {Map<string, string>} headingsMap 
+ * @param {boolean} highlight Colour fenced code blocks that name a known language
  * @returns {marked.Renderer}
  */
-function buildMarkedRenderer(headingsMap) {
+function buildMarkedRenderer(headingsMap, highlight = true) {
   const renderer = new marked.Renderer();
   const originalCodeRenderer = renderer.code.bind(renderer);
 
@@ -29,6 +31,13 @@ function buildMarkedRenderer(headingsMap) {
 
     if (text.includes('┌') && text.includes('└')) {
       return `<div class="ui-mockup-container"><pre class="ui-mockup"><code>${escapeHtml(text)}</code></pre></div>`;
+    }
+
+    // Only fences that name a language are coloured: guessing one gets short snippets wrong.
+    const language = lang.trim().split(/\s+/)[0];
+    if (highlight && language && hljs.getLanguage(language)) {
+      const highlighted = hljs.highlight(text, { language, ignoreIllegals: true }).value;
+      return `<pre><code class="hljs language-${escapeHtml(language)}">${highlighted}</code></pre>\n`;
     }
 
     return originalCodeRenderer.call(this, token);
@@ -86,6 +95,7 @@ function parseMarkdownToHtml(rawMarkdownContent, options = {}) {
     footer: options.footer !== undefined ? options.footer : (frontMatter.footer || true),
     mermaid: options.mermaid !== undefined ? options.mermaid : (frontMatter.mermaid !== false),
     katex: options.katex !== undefined ? options.katex : (frontMatter.katex !== false),
+    highlight: options.highlight !== undefined ? options.highlight : (frontMatter.highlight !== false),
     customCss: options.customCss || '',
     cssFile: options.cssFile || frontMatter.cssFile || frontMatter.css
   };
@@ -118,7 +128,7 @@ function parseMarkdownToHtml(rawMarkdownContent, options = {}) {
 
   // 6. Parse Markdown using custom renderer
   marked.setOptions({ gfm: true, breaks: true });
-  const renderer = buildMarkedRenderer(headingsMap);
+  const renderer = buildMarkedRenderer(headingsMap, mergedOptions.highlight);
   marked.use({ renderer });
 
   let bodyHtml = marked.parse(processedMd);

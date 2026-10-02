@@ -6,6 +6,7 @@ const githubTheme = require('./github');
 const ebookTheme = require('./ebook');
 const cyberpunkTheme = require('./cyberpunk');
 const minimalTheme = require('./minimal');
+const highlightCss = require('./highlight');
 
 const THEMES = {
   modern: modernTheme,
@@ -16,6 +17,9 @@ const THEMES = {
   cyberpunk: cyberpunkTheme,
   minimal: minimalTheme
 };
+
+// Themes whose code blocks sit on a dark background; the others use the light palette.
+const DARK_CODE_THEMES = new Set(['modern', 'dark', 'ebook', 'cyberpunk']);
 
 /**
  * Builds font override CSS string
@@ -40,10 +44,12 @@ function getFontOverrideCss(font) {
  * @returns {string} Consolidated CSS string
  */
 function getThemeStyles(theme, font = '') {
-  const themeCss = THEMES[theme] || THEMES.modern;
+  const themeName = THEMES[theme] ? theme : 'modern';
+  const themeCss = THEMES[themeName];
+  const tokenCss = DARK_CODE_THEMES.has(themeName) ? highlightCss.dark : highlightCss.light;
   const fontOverrideCss = getFontOverrideCss(font);
 
-  return `${coverCss}\n${fontOverrideCss}${themeCss}`;
+  return `${coverCss}\n${fontOverrideCss}${themeCss}${tokenCss}`;
 }
 
 module.exports = {
