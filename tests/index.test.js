@@ -94,6 +94,20 @@ async function runTests() {
     assert.ok(clean.includes('Safe Content'));
   });
 
+  test('utils.sanitizeHtml: strips handlers however they are written, and only inside tags', () => {
+    assert.strictEqual(sanitizeHtml('<img src="x"onerror=alert(1)>'), '<img src="x">');
+    assert.strictEqual(sanitizeHtml('<svg/onload=alert(1)>'), '<svg>');
+    assert.strictEqual(sanitizeHtml('<a ONCLICK=\'x()\' href="?online=1&y=onload=2">go</a>'), '<a href="?online=1&y=onload=2">go</a>');
+    assert.ok(!sanitizeHtml('<img onerror="alert(1)>').includes('onerror'));
+    assert.strictEqual(sanitizeHtml('<br />text onclick = fn'), '<br />text onclick = fn');
+  });
+
+  test('parser.parseMarkdownToHtml: keeps event handler assignments written in code', () => {
+    const html = parseMarkdownToHtml('```\nel.onclick = () => greet();\n```\n\nInline `a.onload = b` too.');
+    assert.ok(html.includes('el.onclick = () =&gt; greet();'));
+    assert.ok(html.includes('<code>a.onload = b</code>'));
+  });
+
   // 6. HTML Parser Integration (Themes, Font & Cover)
   test('parser.parseMarkdownToHtml: integrates cover page, new themes & font options', () => {
     const md = `---\ntitle: Cover Title\nsubtitle: Subtitle Text\ncover: true\ntheme: ebook\nfont: Lora\ntoc: true\n---\n# Chapter 1\nSome paragraph text.`;
