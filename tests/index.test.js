@@ -170,6 +170,26 @@ async function runTests() {
     if (fs.existsSync(outHtmlPath)) fs.unlinkSync(outHtmlPath);
   });
 
+  // 8. Extension package
+  test('extension: every page and script the manifest and pages refer to is tracked by git', () => {
+    const { execFileSync } = require('child_process');
+    const root = path.join(__dirname, '..');
+    const tracked = new Set(
+      execFileSync('git', ['ls-files', 'extension'], { cwd: root, encoding: 'utf8' }).split('\n').filter(Boolean)
+    );
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, 'extension/manifest.json'), 'utf8'));
+    const pages = [manifest.action.default_popup, 'preview/preview.html'];
+    const needed = [manifest.background.service_worker, ...pages];
+    for (const page of pages) {
+      const html = fs.readFileSync(path.join(root, 'extension', page), 'utf8');
+      for (const [, ref] of html.matchAll(/(?:src|href)="([^":]+)"/g)) {
+        needed.push(path.posix.join(path.posix.dirname(page), ref));
+      }
+    }
+    const missing = needed.filter((file) => !tracked.has(`extension/${file}`));
+    assert.deepStrictEqual(missing, []);
+  });
+
   console.log(`\n\x1b[33mSummary:\x1b[0m ${passed}/${total} tests passed.`);
   if (passed !== total) {
     process.exit(1);
