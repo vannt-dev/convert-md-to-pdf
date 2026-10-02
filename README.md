@@ -27,7 +27,7 @@
 - 🚀 **CLI & Batch Conversion**: Convert single files or batch process directories with wildcard patterns.
 - 🎨 **Custom CSS Injection**: Inject custom branding CSS stylesheets (`-c, --css custom.css`).
 - 📊 **Mermaid Diagrams**: Sequence diagrams (with auto note wrapping), flowcharts, class diagrams, and gantt charts.
-- 🌈 **Syntax Highlighting**: Fenced code blocks that name a language (` ```js `, ` ```python `, ` ```diff `, …) are coloured at build time with highlight.js — no CDN, so it also works offline and in static HTML export. Colours follow the theme's code block background. CLI only for now.
+- 🌈 **Syntax Highlighting**: Fenced code blocks that name a language (` ```js `, ` ```python `, ` ```diff `, …) are coloured at build time with highlight.js — no CDN, so it also works offline and in static HTML export. Colours follow the theme's code block background. Works in the CLI and in the extension preview.
 - 📐 **LaTeX Math Support**: Mathematical equations rendered with KaTeX.
 - 💡 **GitHub Callout Box Alerts**: Support for `> [!NOTE]`, `> [!TIP]`, `> [!WARNING]`, `> [!IMPORTANT]`, and `> [!CAUTION]`.
 - 💻 **ASCII UI Mockups**: Styled dark-theme boxes for terminal output & ASCII wireframe mockups.
