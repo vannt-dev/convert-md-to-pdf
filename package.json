@@ -1,6 +1,6 @@
 {
   "name": "md-pdf-studio",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "A powerful CLI tool and Manifest V3 Browser Extension to convert Markdown files, text, or web pages into beautifully styled PDFs with Mermaid diagrams, LaTeX math, TOC, and themes.",
   "main": "src/core/index.js",
   "bin": {
