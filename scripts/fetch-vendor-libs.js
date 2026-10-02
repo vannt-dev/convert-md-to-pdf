@@ -44,6 +44,7 @@ async function fetchAll() {
     await downloadFile('https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js', path.join(libDir, 'mermaid.min.js'));
     await downloadFile('https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js', path.join(libDir, 'katex.min.js'));
     await downloadFile('https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css', path.join(libDir, 'katex.min.css'));
+    await downloadFile('https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.12.0/highlight.min.js', path.join(libDir, 'highlight.min.js'));
     console.log('✨ All vendor libraries successfully updated!');
   } catch (err) {
     console.error('✖ Error downloading vendor libraries:', err.message);
