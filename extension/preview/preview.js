@@ -75,8 +75,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Apply CSS theme styles
     themeStyleEl.textContent = getThemeStyles(options.theme || 'modern', options.pageSize || 'A4', options.customCss || '', options.font || '');
 
-    // Preprocess LaTeX & Symbols
-    const processedMd = preprocessMarkdown(markdownText);
+    // Preprocess footnotes, LaTeX & Symbols
+    const processedMd = preprocessMarkdown(MdPdfFootnotes.applyFootnotes(markdownText));
 
     // Generate TOC if requested
     let tocHtml = '';
@@ -506,6 +506,15 @@ document.addEventListener('DOMContentLoaded', () => {
       .hljs-strong { font-weight: 700; }
     `;
 
-    return pageCss + '\n' + coverCss + '\n' + fontOverride + styles + tokenCss + '\n' + tocCss + '\n' + customCss;
+    // Keep in sync with the footnote rules in src/core/templates.js.
+    const footnoteCss = `
+      .footnote-ref { font-size: 0.75em; line-height: 0; }
+      .footnote-ref a, .footnote-backref { text-decoration: none; }
+      .footnotes { margin-top: 28px; padding-top: 10px; border-top: 1px solid currentColor; font-size: 0.85em; break-inside: avoid-page; }
+      .footnotes ol { margin: 0; padding-left: 1.6em; }
+      .footnotes li { margin: 3px 0; }
+    `;
+
+    return pageCss + '\n' + coverCss + '\n' + fontOverride + styles + tokenCss + footnoteCss + '\n' + tocCss + '\n' + customCss;
   }
 });

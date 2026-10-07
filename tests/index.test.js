@@ -10,6 +10,7 @@ const {
   escapeHtml 
 } = require('../src/core/utils');
 const { parseMarkdownToHtml } = require('../src/core/parser');
+const { applyFootnotes } = require('../src/core/footnotes');
 const { convertMarkdownToPdf } = require('../src/core/index');
 
 async function runTests() {
@@ -188,6 +189,67 @@ async function runTests() {
     }
     const missing = needed.filter((file) => !tracked.has(`extension/${file}`));
     assert.deepStrictEqual(missing, []);
+  });
+
+  // 9. Footnotes
+  test('footnotes: references are numbered in order of first use and linked to their notes', () => {
+    const out = applyFootnotes(
+      'Second[^b] comes first, then first[^a], then second again[^b].\n\n[^a]: Note A\n[^b]: Note **B**\n'
+    );
+    assert.ok(out.includes('Second<sup class="footnote-ref"><a href="#fn-1" id="fnref-1">1</a></sup>'));
+    assert.ok(out.includes('first<sup class="footnote-ref"><a href="#fn-2" id="fnref-2">2</a></sup>'));
+    assert.ok(out.includes('again<sup class="footnote-ref"><a href="#fn-1" id="fnref-1-2">1</a></sup>'));
+    assert.ok(out.indexOf('1. <span id="fn-1"></span>Note **B**') < out.indexOf('2. <span id="fn-2"></span>Note A'));
+    assert.ok(!/^\[\^a\]:/m.test(out), 'definitions are taken out of the body');
+  });
+
+  test('footnotes: code, undefined references and unused notes are left alone', () => {
+    const md = [
+      'Real[^1], undefined[^nope], inline code `x[^1]`.',
+      '',
+      '```md',
+      'Example[^1]',
+      '[^1]: not a definition',
+      '```',
+      '',
+      '[^1]: A note that',
+      '    continues on the next line',
+      '[^unused]: Never referenced',
+    ].join('\n');
+    const out = applyFootnotes(md);
+    assert.ok(out.includes('undefined[^nope]'));
+    assert.ok(out.includes('`x[^1]`'));
+    assert.ok(out.includes('Example[^1]\n[^1]: not a definition'));
+    assert.ok(out.includes('A note that continues on the next line'));
+    assert.ok(!out.includes('Never referenced'));
+    assert.strictEqual((out.match(/id="fn-/g) || []).length, 1);
+  });
+
+  test('footnotes: text without footnotes is returned unchanged', () => {
+    const md = '# Title\n\nAn array index a[^1] with no definition, and `[^x]: code`.\n';
+    assert.strictEqual(applyFootnotes(md), md);
+    assert.strictEqual(applyFootnotes('plain'), 'plain');
+    assert.strictEqual(applyFootnotes(''), '');
+  });
+
+  test('parser.parseMarkdownToHtml: footnotes render as a linked list with the note formatted', () => {
+    const html = parseMarkdownToHtml('# Doc\n\nClaim[^src].\n\n[^src]: See *the paper* at <https://example.com>.\n');
+    assert.ok(html.includes('<sup class="footnote-ref"><a href="#fn-1" id="fnref-1">1</a></sup>'));
+    assert.ok(
+      /<section class="footnotes">\s*<ol>\s*<li><span id="fn-1"><\/span>See <em>the paper<\/em> at <a href="https:\/\/example.com">/.test(html)
+    );
+    assert.ok(html.includes('class="footnote-backref"'));
+    assert.ok(html.includes('.footnotes {'));
+  });
+
+  test('extension: ships the same footnote code as the CLI', () => {
+    const root = path.join(__dirname, '..');
+    assert.strictEqual(
+      fs.readFileSync(path.join(root, 'extension/lib/footnotes.js'), 'utf8'),
+      fs.readFileSync(path.join(root, 'src/core/footnotes.js'), 'utf8')
+    );
+    const preview = fs.readFileSync(path.join(root, 'extension/preview/preview.js'), 'utf8');
+    assert.ok(preview.includes('MdPdfFootnotes.applyFootnotes(markdownText)'));
   });
 
   console.log(`\n\x1b[33mSummary:\x1b[0m ${passed}/${total} tests passed.`);

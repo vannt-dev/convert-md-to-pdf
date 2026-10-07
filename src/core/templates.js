@@ -99,6 +99,12 @@ function getHtmlTemplate({ title, author = '', bodyHtml, options = {} }) {
       page-break-after: always;
     }
 
+    .footnote-ref { font-size: 0.75em; line-height: 0; }
+    .footnote-ref a, .footnote-backref { text-decoration: none; }
+    .footnotes { margin-top: 28px; padding-top: 10px; border-top: 1px solid currentColor; font-size: 0.85em; break-inside: avoid-page; }
+    .footnotes ol { margin: 0; padding-left: 1.6em; }
+    .footnotes li { margin: 3px 0; }
+
     img {
       max-width: 100% !important;
       height: auto !important;
