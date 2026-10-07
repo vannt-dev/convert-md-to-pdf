@@ -10,6 +10,7 @@ const {
   escapeHtml 
 } = require('./utils');
 const { getHtmlTemplate } = require('./templates');
+const { applyFootnotes } = require('./footnotes');
 
 /**
  * Builds marked custom renderer for diagrams, UI mockups, and headings
@@ -100,8 +101,8 @@ function parseMarkdownToHtml(rawMarkdownContent, options = {}) {
     cssFile: options.cssFile || frontMatter.cssFile || frontMatter.css
   };
 
-  // 3. Preprocess Markdown (LaTeX, pagebreaks, alerts)
-  const processedMd = preprocessMarkdown(markdownContent);
+  // 3. Preprocess Markdown (footnotes, LaTeX, pagebreaks, alerts)
+  const processedMd = preprocessMarkdown(applyFootnotes(markdownContent));
 
   // 4. Generate TOC & Cover Page
   let tocHtml = '';
