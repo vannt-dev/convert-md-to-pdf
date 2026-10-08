@@ -30,6 +30,7 @@
 - 🌈 **Syntax Highlighting**: Fenced code blocks that name a language (` ```js `, ` ```python `, ` ```diff `, …) are coloured at build time with highlight.js — no CDN, so it also works offline and in static HTML export. Colours follow the theme's code block background. Works in the CLI and in the extension preview.
 - 📐 **LaTeX Math Support**: Mathematical equations rendered with KaTeX.
 - 📝 **Footnotes**: `text[^1]` with `[^1]: the note` anywhere in the file. Notes are numbered in the order they are first referenced, gathered at the end of the document, and linked both ways. Works in the CLI and in the extension preview.
+- 📘 **Word & EPUB Export (CLI)**: `-f docx` writes a Word document and `-f epub` an EPUB 3 e-book, straight from the Markdown and without a browser. Headings, lists (nested, numbered from any start, task lists), tables with their alignment, code blocks, quotes, footnotes, links and local images become the real thing in each format — Word styles you can restyle, a chapter per top-level heading and a navigation menu in the EPUB. `--toc`, `--cover`, page size, orientation and margins apply to Word; `--toc` and `--cover` to EPUB. Themes, custom CSS, Mermaid diagrams and KaTeX math are for PDF and HTML only: a diagram or formula is kept as its source. An image on the web is not downloaded — it is named in Word and becomes a link in the EPUB — and a link to a neighbouring file keeps its text only.
 - 📎 **File Includes (CLI)**: A line that holds only `@import "chapters/intro.md"` is replaced by that file, relative to the file the line is in. A Markdown file is inserted as Markdown (without its front matter) and may import further files; any other file — `@import "src/app.js"` — is inserted as a code block labelled with its extension. Lines inside a code block are left alone, a missing file or files that import each other stop the conversion with the file and line, and watch mode follows the imported files. `--no-include` turns it off.
 - 💡 **GitHub Callout Box Alerts**: Support for `> [!NOTE]`, `> [!TIP]`, `> [!WARNING]`, `> [!IMPORTANT]`, and `> [!CAUTION]`.
 - 💻 **ASCII UI Mockups**: Styled dark-theme boxes for terminal output & ASCII wireframe mockups.
@@ -84,6 +85,12 @@ npx md-pdf-studio file1.md file2.md -o output_dir/
 
 # Convert entire directory of .md files
 npx md-pdf-studio ./docs/ -o ./dist/
+
+# Word document with a cover page and a table of contents
+npx md-pdf-studio report.md -f docx --cover --toc
+
+# EPUB e-book, one chapter per top-level heading
+npx md-pdf-studio book.md -f epub -o book.epub
 ```
 
 A book kept as one file per chapter is one document with includes:
@@ -109,8 +116,8 @@ toc: true
 
 | Flag | Alias | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `-o, --output <path>`| | Output PDF/HTML file path or target directory | Auto-derived |
-| `-f, --format <format>`| | Output format: `pdf`, `html` | `pdf` |
+| `-o, --output <path>`| | Output file path or target directory | Auto-derived |
+| `-f, --format <format>`| | Output format: `pdf`, `html`, `docx`, `epub` | `pdf` |
 | `-w, --watch` | | Live watch input file and auto-recompile on change | `false` |
 | `-t, --theme <theme>` | | Theme: `modern`, `dark`, `academic`, `github`, `ebook`, `cyberpunk`, `minimal` | `modern` |
 | `--font <font>` | | Font family: `Inter`, `Roboto`, `Lora`, `Merriweather`, `JetBrains Mono`, `Fira Code` | `Inter` |
@@ -201,6 +208,11 @@ convert-md-to-pdf/
 │   │   │   └── minimal.js   # Minimal monochrome theme
 │   │   ├── frontmatter.js   # YAML front matter parser
 │   │   ├── include.js       # @import "file" expansion
+│   │   ├── docmodel.js      # Format-neutral document model (blocks of flat runs)
+│   │   ├── docx.js          # Word (.docx) writer
+│   │   ├── epub.js          # EPUB 3 writer
+│   │   ├── images.js        # Local image reading & sizes
+│   │   ├── zip.js           # ZIP container writer for docx/epub
 │   │   ├── cover.js         # Cover page generator
 │   │   ├── toc.js           # Dotted leader line TOC generator
 │   │   ├── sanitizer.js     # HTML sanitizer & escaping

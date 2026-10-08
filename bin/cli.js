@@ -6,6 +6,10 @@ const fs = require('fs');
 const { convertMarkdownToPdf } = require('../src/core/index');
 const packageJson = require('../package.json');
 
+const OUTPUT_FORMATS = ['pdf', 'html', 'docx', 'epub'];
+// An --output that names a file rather than a folder.
+const OUTPUT_FILE = /\.(pdf|html|docx|epub)$/i;
+
 const program = new Command();
 
 program
@@ -14,8 +18,8 @@ program
   .description('High-quality Markdown to PDF converter CLI with Mermaid, Math, TOC, Custom CSS, and Batch conversion.')
   .version(packageJson.version, '-v, --version', 'Output tool version')
   .argument('<inputs...>', 'Input Markdown file(s) or wildcard pattern (.md)')
-  .option('-o, --output <path>', 'Output PDF/HTML file path or destination directory')
-  .option('-f, --format <format>', 'Output format: pdf (default), html', 'pdf')
+  .option('-o, --output <path>', 'Output file path or destination directory')
+  .option('-f, --format <format>', 'Output format: pdf (default), html, docx, epub', 'pdf')
   .option('-w, --watch', 'Watch input file(s) and recompile automatically on changes', false)
   .option('-t, --theme <theme>', 'Theme name: modern (default), dark, academic, minimal, github, ebook, cyberpunk', 'modern')
   .option('--font <font>', 'Font family: Inter (default), Roboto, Lora, Merriweather, JetBrains Mono, Fira Code', 'Inter')
@@ -47,6 +51,9 @@ program
         }
 
         const targetFormat = (options.format || 'pdf').toLowerCase();
+        if (!OUTPUT_FORMATS.includes(targetFormat)) {
+          throw new Error(`Unknown format "${options.format}". Use one of: ${OUTPUT_FORMATS.join(', ')}`);
+        }
         console.log(`\n\x1b[36m🚀 Converting ${inputFiles.length} file(s) to ${targetFormat.toUpperCase()}...\x1b[0m`);
         console.log(`   Theme:  ${options.theme}`);
         console.log(`   Font:   ${options.font}`);
@@ -58,7 +65,7 @@ program
         let targetOutputDir = null;
         if (options.output) {
           const resolvedOut = path.resolve(options.output);
-          if (inputFiles.length === 1 && (resolvedOut.endsWith('.pdf') || resolvedOut.endsWith('.html'))) {
+          if (inputFiles.length === 1 && OUTPUT_FILE.test(resolvedOut)) {
             targetOutputDir = null;
           } else {
             targetOutputDir = resolvedOut;
@@ -75,7 +82,7 @@ program
 
           if (targetOutputDir) {
             fileOutPath = path.join(targetOutputDir, `${fileBaseName}.${targetFormat}`);
-          } else if (options.output && (options.output.endsWith('.pdf') || options.output.endsWith('.html'))) {
+          } else if (options.output && OUTPUT_FILE.test(options.output)) {
             fileOutPath = options.output;
           }
 
@@ -100,7 +107,7 @@ program
           });
 
           result.includedFiles.forEach(includedFile => importedFiles.add(includedFile));
-          const outPathDisplay = result.pdfPath || result.htmlPath;
+          const outPathDisplay = result.outputPath;
           console.log(`   \x1b[32m✔ File saved:\x1b[0m ${outPathDisplay}`);
           count++;
         }
