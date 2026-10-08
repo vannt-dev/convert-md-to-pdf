@@ -29,9 +29,13 @@ program
   .option('--no-mermaid', 'Disable Mermaid diagram rendering')
   .option('--no-katex', 'Disable KaTeX math formula rendering')
   .option('--no-highlight', 'Disable syntax highlighting of code blocks')
+  .option('--no-include', 'Leave @import "file" lines as they are instead of inserting the file')
   .option('-b, --browser <path>', 'Custom Chrome/Edge executable path')
   .action(async (inputArgs, options) => {
     try {
+      // Files pulled in with @import, so watch mode can follow them too.
+      const importedFiles = new Set();
+
       const runConversion = async () => {
         const startTime = Date.now();
         const inputFiles = expandInputFiles(inputArgs);
@@ -91,9 +95,11 @@ program
             mermaid: options.mermaid,
             katex: options.katex,
             highlight: options.highlight,
+            include: options.include,
             executablePath: options.browser
           });
 
+          result.includedFiles.forEach(includedFile => importedFiles.add(includedFile));
           const outPathDisplay = result.pdfPath || result.htmlPath;
           console.log(`   \x1b[32m✔ File saved:\x1b[0m ${outPathDisplay}`);
           count++;
@@ -112,27 +118,35 @@ program
         console.log('\n\x1b[35m👀 Watch mode enabled. Monitoring files for changes...\x1b[0m');
 
         let debounceTimer = null;
+        let watchImports = () => {};
         const triggerRecompile = (filename) => {
           if (debounceTimer) clearTimeout(debounceTimer);
           debounceTimer = setTimeout(async () => {
             console.log(`\n\x1b[33m🔄 Change detected in ${filename}. Recompiling...\x1b[0m`);
             try {
               await runConversion();
+              watchImports();
             } catch (err) {
               console.error(`\x1b[31m✖ Error during watch recompile:\x1b[0m ${err.message}`);
             }
           }, 300);
         };
 
-        inputFiles.forEach(filePath => {
-          if (fs.existsSync(filePath)) {
-            fs.watch(filePath, (eventType) => {
-              if (eventType === 'change') {
-                triggerRecompile(path.basename(filePath));
-              }
-            });
-          }
-        });
+        const watched = new Set();
+        const watchFile = (filePath) => {
+          if (watched.has(filePath) || !fs.existsSync(filePath)) return;
+          watched.add(filePath);
+          fs.watch(filePath, (eventType) => {
+            if (eventType === 'change') {
+              triggerRecompile(path.basename(filePath));
+            }
+          });
+        };
+        // An edit can add an @import, so the list is read again after every run.
+        watchImports = () => importedFiles.forEach(watchFile);
+
+        inputFiles.forEach(watchFile);
+        watchImports();
 
         if (options.css && fs.existsSync(options.css)) {
           fs.watch(options.css, (eventType) => {

@@ -3,13 +3,14 @@ const path = require('path');
 const { parseMarkdownToHtml } = require('./parser');
 const { renderHtmlToPdf } = require('../browser/renderer');
 const { resolvePath } = require('./utils');
+const { expandIncludes } = require('./include');
 
 /**
  * Main function to convert Markdown file to PDF
  * @param {string} inputPath Path to source .md file
  * @param {string} [outputPath] Path to target .pdf file
  * @param {Object} [options] Conversion options
- * @returns {Promise<{ htmlPath: string, pdfPath: string }>}
+ * @returns {Promise<{ htmlPath: string, pdfPath: string, includedFiles: string[] }>}
  */
 async function convertMarkdownToPdf(inputPath, outputPath, options = {}) {
   const absInputPath = resolvePath(inputPath);
@@ -29,8 +30,12 @@ async function convertMarkdownToPdf(inputPath, outputPath, options = {}) {
     absOutputPath = path.join(parsed.dir, `${parsed.name}.${format}`);
   }
 
-  // Read Markdown
-  const markdownContent = fs.readFileSync(absInputPath, 'utf8');
+  // Read Markdown, pulling in the files it imports with `@import "path"`
+  let markdownContent = fs.readFileSync(absInputPath, 'utf8');
+  let includedFiles = [];
+  if (options.include !== false) {
+    ({ content: markdownContent, files: includedFiles } = expandIncludes(markdownContent, absInputPath));
+  }
 
   // Parse to HTML
   const htmlContent = parseMarkdownToHtml(markdownContent, options);
@@ -39,7 +44,8 @@ async function convertMarkdownToPdf(inputPath, outputPath, options = {}) {
     fs.writeFileSync(absOutputPath, htmlContent, 'utf8');
     return {
       htmlPath: absOutputPath,
-      pdfPath: null
+      pdfPath: null,
+      includedFiles
     };
   }
 
@@ -62,7 +68,8 @@ async function convertMarkdownToPdf(inputPath, outputPath, options = {}) {
 
     return {
       htmlPath: tempHtmlPath,
-      pdfPath: absOutputPath
+      pdfPath: absOutputPath,
+      includedFiles
     };
   } catch (error) {
     // Clean up on failure
@@ -75,6 +82,7 @@ async function convertMarkdownToPdf(inputPath, outputPath, options = {}) {
 
 module.exports = {
   convertMarkdownToPdf,
+  expandIncludes,
   parseMarkdownToHtml,
   renderHtmlToPdf
 };

@@ -30,6 +30,7 @@
 - 🌈 **Syntax Highlighting**: Fenced code blocks that name a language (` ```js `, ` ```python `, ` ```diff `, …) are coloured at build time with highlight.js — no CDN, so it also works offline and in static HTML export. Colours follow the theme's code block background. Works in the CLI and in the extension preview.
 - 📐 **LaTeX Math Support**: Mathematical equations rendered with KaTeX.
 - 📝 **Footnotes**: `text[^1]` with `[^1]: the note` anywhere in the file. Notes are numbered in the order they are first referenced, gathered at the end of the document, and linked both ways. Works in the CLI and in the extension preview.
+- 📎 **File Includes (CLI)**: A line that holds only `@import "chapters/intro.md"` is replaced by that file, relative to the file the line is in. A Markdown file is inserted as Markdown (without its front matter) and may import further files; any other file — `@import "src/app.js"` — is inserted as a code block labelled with its extension. Lines inside a code block are left alone, a missing file or files that import each other stop the conversion with the file and line, and watch mode follows the imported files. `--no-include` turns it off.
 - 💡 **GitHub Callout Box Alerts**: Support for `> [!NOTE]`, `> [!TIP]`, `> [!WARNING]`, `> [!IMPORTANT]`, and `> [!CAUTION]`.
 - 💻 **ASCII UI Mockups**: Styled dark-theme boxes for terminal output & ASCII wireframe mockups.
 
@@ -85,6 +86,23 @@ npx md-pdf-studio file1.md file2.md -o output_dir/
 npx md-pdf-studio ./docs/ -o ./dist/
 ```
 
+A book kept as one file per chapter is one document with includes:
+
+```markdown
+---
+title: Handbook
+toc: true
+---
+# Handbook
+
+@import "chapters/01-intro.md"
+@import "chapters/02-setup.md"
+
+## Example config
+
+@import "examples/config.yml"
+```
+
 ---
 
 ## 🛠️ CLI Options
@@ -106,6 +124,7 @@ npx md-pdf-studio ./docs/ -o ./dist/
 | `--no-mermaid` | | Disable Mermaid diagram rendering | `false` |
 | `--no-katex` | | Disable KaTeX math formula rendering | `false` |
 | `--no-highlight` | | Disable syntax highlighting of code blocks | `false` |
+| `--no-include` | | Leave `@import "file"` lines as they are instead of inserting the file | `false` |
 
 ---
 
@@ -181,6 +200,7 @@ convert-md-to-pdf/
 │   │   │   ├── cyberpunk.js # Cyberpunk neon dark theme
 │   │   │   └── minimal.js   # Minimal monochrome theme
 │   │   ├── frontmatter.js   # YAML front matter parser
+│   │   ├── include.js       # @import "file" expansion
 │   │   ├── cover.js         # Cover page generator
 │   │   ├── toc.js           # Dotted leader line TOC generator
 │   │   ├── sanitizer.js     # HTML sanitizer & escaping
