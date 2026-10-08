@@ -12,6 +12,8 @@ const {
 const { parseMarkdownToHtml } = require('../src/core/parser');
 const { applyFootnotes } = require('../src/core/footnotes');
 const { convertMarkdownToPdf } = require('../src/core/index');
+const { expandIncludes } = require('../src/core/include');
+const os = require('os');
 
 async function runTests() {
   console.log('\x1b[36m🧪 Running convert-md-to-pdf test suite...\x1b[0m\n');
@@ -250,6 +252,75 @@ async function runTests() {
     );
     const preview = fs.readFileSync(path.join(root, 'extension/preview/preview.js'), 'utf8');
     assert.ok(preview.includes('MdPdfFootnotes.applyFootnotes(markdownText)'));
+  });
+
+  // A throwaway folder of files that import each other.
+  const includeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-pdf-include-'));
+  const write = (name, text) => {
+    const file = path.join(includeDir, name);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text, 'utf8');
+    return file;
+  };
+  const mainFile = write(
+    'main.md',
+    '---\ntitle: Book\n---\n# Book\n\n@import "chapters/one.md"\n\n@import \'code/app.js\'\n\nEnd.\n'
+  );
+  write('chapters/one.md', '---\ntitle: ignored\n---\n## One\n\n@import "../shared/note.md"\n');
+  write('shared/note.md', 'A shared note.\n');
+  write('code/app.js', 'const tick = `a`;\n');
+
+  test('include: Markdown files are inserted without front matter, relative to the importing file', () => {
+    const { content, files } = expandIncludes(fs.readFileSync(mainFile, 'utf8'), mainFile);
+    assert.ok(content.startsWith('---\ntitle: Book\n---\n# Book\n\n## One\n\nA shared note.\n\n'));
+    assert.ok(!content.includes('title: ignored'));
+    assert.ok(!content.includes('@import'));
+    assert.ok(content.endsWith('\n\nEnd.\n'));
+    assert.deepStrictEqual(
+      files.map(file => path.relative(includeDir, file).replace(/\\/g, '/')).sort(),
+      ['chapters/one.md', 'code/app.js', 'shared/note.md']
+    );
+  });
+
+  test('include: other files become a fenced code block that their own backticks cannot close', () => {
+    const { content } = expandIncludes('@import "code/app.js"', mainFile);
+    assert.strictEqual(content, '```js\nconst tick = `a`;\n```');
+    write('code/fence.txt', 'before\n````\ninner\n````\n');
+    assert.ok(expandIncludes('@import "code/fence.txt"', mainFile).content.startsWith('`````txt\n'));
+  });
+
+  test('include: a line inside a code block or inside a sentence is not an import', () => {
+    const source =
+      'Use @import "x.md" like this:\n\n```md\n@import "missing.md"\n```\n\n~~~\n@import "missing.md"\n~~~\n';
+    assert.strictEqual(expandIncludes(source, mainFile).content, source);
+  });
+
+  test('include: a missing file, a folder and a loop are reported with the line they are on', () => {
+    assert.throws(
+      () => expandIncludes('# T\n\n@import "nope.md"\n', mainFile),
+      /Cannot import "nope\.md" \(.*main\.md:3\): file not found/
+    );
+    assert.throws(() => expandIncludes('@import "chapters"', mainFile), /file not found/);
+    const loopA = write('loop-a.md', '@import "loop-b.md"\n');
+    write('loop-b.md', '@import "loop-a.md"\n');
+    assert.throws(
+      () => expandIncludes(fs.readFileSync(loopA, 'utf8'), loopA),
+      /import each other \(loop-a\.md → loop-b\.md → loop-a\.md\)/
+    );
+  });
+
+  await asyncTest('core.convertMarkdownToPdf: imported files are part of the output and are listed', async () => {
+    const outFile = path.join(includeDir, 'book.html');
+    const result = await convertMarkdownToPdf(mainFile, outFile, { format: 'html' });
+    const html = fs.readFileSync(outFile, 'utf8');
+    assert.ok(html.includes('A shared note.'));
+    assert.ok(/<code class="hljs language-js">/.test(html));
+    assert.strictEqual(result.includedFiles.length, 3);
+
+    const plain = await convertMarkdownToPdf(mainFile, outFile, { format: 'html', include: false });
+    assert.deepStrictEqual(plain.includedFiles, []);
+    assert.ok(fs.readFileSync(outFile, 'utf8').includes('@import'));
+    fs.rmSync(includeDir, { recursive: true, force: true });
   });
 
   console.log(`\n\x1b[33mSummary:\x1b[0m ${passed}/${total} tests passed.`);
