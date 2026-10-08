@@ -193,11 +193,11 @@ document.addEventListener('DOMContentLoaded', () => {
   function preprocessMarkdown(mdContent) {
     if (!mdContent) return '';
     return mdContent
-      .replace(/^>\s*\[!NOTE\]\s*\r?\n/gm, '> **ℹ️ NOTE:** ')
-      .replace(/^>\s*\[!TIP\]\s*\r?\n/gm, '> **💡 TIP:** ')
-      .replace(/^>\s*\[!WARNING\]\s*\r?\n/gm, '> **⚠️ WARNING:** ')
-      .replace(/^>\s*\[!IMPORTANT\]\s*\r?\n/gm, '> **❗ IMPORTANT:** ')
-      .replace(/^>\s*\[!CAUTION\]\s*\r?\n/gm, '> **🚫 CAUTION:** ')
+      .replace(/^>[ \t]*\[!NOTE\][ \t]*(?:\r?\n>[ \t]?)?/gm, '> **ℹ️ NOTE:** ')
+      .replace(/^>[ \t]*\[!TIP\][ \t]*(?:\r?\n>[ \t]?)?/gm, '> **💡 TIP:** ')
+      .replace(/^>[ \t]*\[!WARNING\][ \t]*(?:\r?\n>[ \t]?)?/gm, '> **⚠️ WARNING:** ')
+      .replace(/^>[ \t]*\[!IMPORTANT\][ \t]*(?:\r?\n>[ \t]?)?/gm, '> **❗ IMPORTANT:** ')
+      .replace(/^>[ \t]*\[!CAUTION\][ \t]*(?:\r?\n>[ \t]?)?/gm, '> **🚫 CAUTION:** ')
       .replace(/<!--\s*page-?break\s*-->/gi, '<div class="page-break"></div>')
       .replace(/\\pagebreak/gi, '<div class="page-break"></div>')
       .replace(/\\longrightarrow/g, '⟶')
