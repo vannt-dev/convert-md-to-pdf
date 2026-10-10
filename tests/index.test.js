@@ -186,7 +186,7 @@ async function runTests() {
     const temp = temporaryHtmlPath(source, elsewhere);
     // relative pictures of the Markdown file resolve from its own folder
     assert.strictEqual(path.dirname(temp), path.dirname(source));
-    assert.ok(/^_temp_.+.html$/.test(path.basename(temp)));
+    assert.ok(/^_temp_.+\.html$/.test(path.basename(temp)));
     // a source folder that cannot be written to falls back to the PDF's folder
     const missing = path.join(__dirname, 'no-such-folder', 'doc.md');
     assert.strictEqual(path.dirname(temporaryHtmlPath(missing, elsewhere)), path.dirname(elsewhere));
