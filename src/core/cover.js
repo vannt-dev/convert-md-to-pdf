@@ -31,8 +31,7 @@ function generateCoverPage(metadata = {}) {
       ${docDate ? `<div class="cover-meta-item"><span class="cover-meta-label">Ngày lập:</span> <span class="cover-meta-val">${escapeHtml(docDate)}</span></div>` : ''}
     </div>
   </div>
-</div>
-<div class="page-break"></div>\n`;
+</div>\n`;
 }
 
 module.exports = {
