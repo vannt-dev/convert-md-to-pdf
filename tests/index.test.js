@@ -90,6 +90,8 @@ async function runTests() {
     assert.ok(coverHtml.includes('Project Proposal'));
     assert.ok(coverHtml.includes('Version 2.0'));
     assert.ok(coverHtml.includes('vannt-dev'));
+    // .cover-page ends its own page; a second break would leave an empty page behind the cover
+    assert.ok(!coverHtml.includes('page-break'));
   });
 
   // 5. HTML Sanitizer
@@ -175,6 +177,19 @@ async function runTests() {
 
     // Clean up
     if (fs.existsSync(outHtmlPath)) fs.unlinkSync(outHtmlPath);
+  });
+
+  test('core.temporaryHtmlPath: the page to print is written beside the source, not beside the PDF', () => {
+    const { temporaryHtmlPath } = require('../src/core/index');
+    const source = path.join(__dirname, '../examples/sample.md');
+    const elsewhere = path.join(require('os').tmpdir(), 'out', 'sample.pdf');
+    const temp = temporaryHtmlPath(source, elsewhere);
+    // relative pictures of the Markdown file resolve from its own folder
+    assert.strictEqual(path.dirname(temp), path.dirname(source));
+    assert.ok(/^_temp_.+.html$/.test(path.basename(temp)));
+    // a source folder that cannot be written to falls back to the PDF's folder
+    const missing = path.join(__dirname, 'no-such-folder', 'doc.md');
+    assert.strictEqual(path.dirname(temporaryHtmlPath(missing, elsewhere)), path.dirname(elsewhere));
   });
 
   // 8. Extension package
