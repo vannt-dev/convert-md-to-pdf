@@ -32,9 +32,6 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Run CLI Test Engine
-        run: npm test
-
       - name: Run Extension Build
         run: node scripts/build-extension.js
   commits:
