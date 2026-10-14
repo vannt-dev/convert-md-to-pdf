@@ -1,3 +1,4 @@
+/*! SPDX-License-Identifier: MIT | Copyright (c) 2026 Van Nguyen | github.com/vannt-dev/convert-md-to-pdf */
 document.addEventListener('DOMContentLoaded', () => {
   const contentEl = document.getElementById('content');
   const themeSelect = document.getElementById('preview-theme');

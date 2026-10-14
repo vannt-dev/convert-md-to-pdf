@@ -1,3 +1,4 @@
+/*! SPDX-License-Identifier: MIT | Copyright (c) 2026 Van Nguyen | github.com/vannt-dev/convert-md-to-pdf */
 /**
  * Syntax Highlighting Token Colors
  * Two palettes, picked by the background each theme gives its code blocks.

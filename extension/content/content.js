@@ -1,3 +1,4 @@
+/*! SPDX-License-Identifier: MIT | Copyright (c) 2026 Van Nguyen | github.com/vannt-dev/convert-md-to-pdf */
 // Content script for Markdown to PDF Converter
 
 // Detect if current page is raw Markdown (e.g. Github raw view or .md file)
