@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/*! SPDX-License-Identifier: MIT | Copyright (c) 2026 Van Nguyen | github.com/vannt-dev/convert-md-to-pdf */
 
 const { Command } = require('commander');
 const path = require('path');

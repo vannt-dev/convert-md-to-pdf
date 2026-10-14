@@ -1,3 +1,4 @@
+/*! SPDX-License-Identifier: MIT | Copyright (c) 2026 Van Nguyen | github.com/vannt-dev/convert-md-to-pdf */
 const { buildDocument, collectHeadings, isPortableLink, plainText } = require('./docmodel');
 const { readLocalImage } = require('./images');
 const { createZip } = require('./zip');

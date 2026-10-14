@@ -1,3 +1,4 @@
+/*! SPDX-License-Identifier: MIT | Copyright (c) 2026 Van Nguyen | github.com/vannt-dev/convert-md-to-pdf */
 // Background Service Worker for Markdown to PDF Converter Extension
 
 chrome.runtime.onInstalled.addListener(() => {
