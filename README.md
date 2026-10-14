@@ -11,6 +11,9 @@
 
 ---
 
+Official builds are listed at [vannt-dev.github.io/official.html](https://vannt-dev.github.io/official.html);
+anything else is not published by vannt-dev.
+
 ## ✨ Features
 
 - 🧩 **Browser Extension (Manifest V3)**:
