@@ -8,6 +8,7 @@
 [![npm downloads](https://img.shields.io/npm/d18m/md-pdf-studio)](https://www.npmjs.com/package/md-pdf-studio)
 ![Browser Extension](https://img.shields.io/badge/Extension-Manifest_V3-green)
 ![License](https://img.shields.io/badge/license-MIT-green)
+[![Official vannt-dev build](https://vannt-dev.github.io/badges/official.svg)](https://vannt-dev.github.io/official.html)
 
 ---
 
