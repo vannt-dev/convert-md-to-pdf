@@ -23,3 +23,9 @@ owned:
   - .github/workflows/ci.yml#name
   - .github/workflows/ci.yml#on
 stack_options: {}
+github:
+  ci:
+    skip_when_only:
+      - "*.md"
+      - "docs/**"
+      - LICENSE
