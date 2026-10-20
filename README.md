@@ -24,8 +24,8 @@ anything else is not published by vannt-dev.
   - Context menu integration: Right-click selected Markdown text or any page -> "Convert to PDF".
   - Full-page Print Preview with live theme switching, Font Selector, Auto TOC, Custom CSS, and native PDF/HTML export.
   - Page numbers and a running header/footer, set in the popup (off by default).
-- 📑 **Auto Cover Page Generator**: Generate elegant document report cover pages via YAML Front Matter (`cover: true`) or `--cover` flag.
-- 🔢 **Page Numbers & Running Header/Footer**: `--page-numbers` prints "Page 3 of 12" at the foot of each page (`--page-numbers simple` prints "3"). `--header` and `--footer` print a line of text at the top and foot of each page, with `{title}`, `{author}`, `{date}`, `{page}` and `{pages}` filled in; `--header` alone prints the document title. With both a footer and page numbers, the footer text sits left and the numbers right. The cover page is printed without them, but counts as page 1. All off by default; front matter keys `header`, `footer` and `pageNumbers` do the same. PDF only (the CLI and the extension); Word and EPUB leave them out.
+- 📑 **Auto Cover Page Generator**: Generate elegant document report cover pages via YAML Front Matter (`cover: true`) or `--cover` flag. The author and date labels are in English, or in Vietnamese with `lang: vi` in the front matter.
+- 🔢 **Page Numbers & Running Header/Footer**: `--page-numbers` prints "Page 3 of 12" at the foot of each page (`--page-numbers simple` prints "3"). `--header "text"` and `--footer "text"` print a line of text at the top and foot of each page, with `{title}`, `{author}`, `{date}`, `{page}` and `{pages}` filled in (`--header "{title}"` prints the document title, `""` prints nothing). Both need their text right after the flag: `md2pdf --header README.md` is refused, because `README.md` is an input file. `--page-numbers` takes `full` or `simple` as its value and nothing else, so `md2pdf --page-numbers README.md` converts `README.md`. With both a footer and page numbers, the footer text sits left and the numbers right. The cover page is printed without them, but counts as page 1. All off by default; front matter keys `header`, `footer` and `pageNumbers` do the same. PDF only (the CLI and the extension); Word and EPUB leave them out.
 - 📌 **Dotted Leader Line Table of Contents (TOC)**: Auto-generates publication-grade TOC with dotted leader lines (`...`) and clickable anchor links (`--toc`).
 - 🎨 **7 Preset Themes**: `modern` (default), `dark`, `academic`, `github`, `ebook`, `cyberpunk`, and `minimal`.
 - 🔤 **Open-Source Font Selector**: 100% free under SIL OFL / Apache 2.0 (`Inter`, `Roboto`, `Lora`, `Merriweather`, `JetBrains Mono`, `Fira Code`).
@@ -130,9 +130,9 @@ toc: true
 | `--font <font>` | | Font family: `Inter`, `Roboto`, `Lora`, `Merriweather`, `JetBrains Mono`, `Fira Code` | `Inter` |
 | `--cover` | | Auto-generate document report Cover Page | `false` |
 | `--toc` | | Auto-generate Table of Contents with Dotted Leader Lines | `false` |
-| `--page-numbers [style]` | | Page numbers at the foot of each page: `full` ("Page 3 of 12") or `simple` ("3") | off (`full` when given alone) |
-| `--header [text]` | | Running header; `{title}`, `{author}`, `{date}`, `{page}`, `{pages}` are filled in | off (the title when given alone) |
-| `--footer [text]` | | Running footer, same placeholders | off ("Page {page} of {pages}" when given alone) |
+| `--page-numbers [style]` | | Page numbers at the foot of each page: `full` ("Page 3 of 12") or `simple` ("3"); any other next argument stays an input | off (`full` when given alone) |
+| `--header <text>` | | Running header; `{title}`, `{author}`, `{date}`, `{page}`, `{pages}` are filled in; `""` for none | off |
+| `--footer <text>` | | Running footer, same placeholders; `""` for none | off |
 | `-p, --page-size <size>`| | Paper size: `A4`, `Letter`, `A3`, `Legal` | `A4` |
 | `-l, --landscape` | | Use landscape page orientation | `false` |
 | `-m, --margin <margin>`| | Custom page margin (e.g. `14mm 12mm 16mm 12mm`) | `14mm 12mm 16mm 12mm` |
@@ -163,6 +163,8 @@ font: Inter
 pageSize: A4
 landscape: false
 highlight: true
+# document language (default en): cover labels and the page's lang
+lang: en
 # running header and footer; header: true also means the title
 header: "{title}"
 footer: "Engineering Team"
@@ -234,6 +236,7 @@ convert-md-to-pdf/
 │   │   ├── templates.js     # HTML document template builder
 │   │   ├── pagemarks.js     # Page numbers & running header/footer CSS (shared with the extension)
 │   │   └── index.js         # Main library API entrypoint
+│   ├── cli/                 # Command line option checks (options.js)
 │   └── browser/             # Headless browser rendering engine
 │       └── renderer.js      # Runs installed Chrome/Edge headless (--print-to-pdf) & PDF worker pool
 ├── extension/               # Browser Extension (Manifest V3)
