@@ -16,11 +16,12 @@ function escapeXml(str) {
  * @param {Object} params
  * @param {string} params.title Document title
  * @param {string} [params.author] Document author
+ * @param {string} [params.language] Document language tag (default en)
  * @param {string} params.bodyHtml Document body HTML
  * @param {Object} [params.options] Template options
  * @returns {string} Full HTML string
  */
-function getHtmlTemplate({ title, author = '', bodyHtml, options = {} }) {
+function getHtmlTemplate({ title, author = '', language = 'en', bodyHtml, options = {} }) {
   const theme = options.theme || 'modern';
   const enableMermaid = options.mermaid !== false;
   const enableKatex = options.katex !== false;
@@ -32,7 +33,7 @@ function getHtmlTemplate({ title, author = '', bodyHtml, options = {} }) {
   const themeStyles = getThemeStyles(theme, options.font);
 
   return `<!DOCTYPE html>
-<html lang="vi">
+<html lang="${escapeXml(language)}">
 <head>
   <meta charset="UTF-8">
   <title>${escapeXml(title)}</title>

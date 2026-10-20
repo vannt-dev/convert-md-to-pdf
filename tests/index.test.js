@@ -95,6 +95,21 @@ async function runTests() {
     assert.ok(!coverHtml.includes('page-break'));
   });
 
+  test('cover: labels are English unless the document language has its own', () => {
+    const meta = { title: 'T', author: 'Ann', date: '2026-10-20', cover: true };
+    const english = generateCoverPage(meta);
+    assert.ok(english.includes('<span class="cover-meta-label">Author:</span>'));
+    assert.ok(english.includes('<span class="cover-meta-label">Date:</span>'));
+    assert.ok(generateCoverPage({ ...meta, language: 'vi-VN' }).includes('Tác giả:'));
+    assert.ok(generateCoverPage({ ...meta, language: 'fr' }).includes('Author:'));
+    const html = parseMarkdownToHtml('---\nauthor: Ann\nlang: vi\n---\n# Doc');
+    assert.ok(html.includes('<html lang="vi">'));
+    assert.ok(html.includes('Tác giả:'));
+    const plain = parseMarkdownToHtml('---\nauthor: Ann\n---\n# Doc');
+    assert.ok(plain.includes('<html lang="en">'));
+    assert.ok(plain.includes('Author:') && !plain.includes('Tác giả'));
+  });
+
   // 5. HTML Sanitizer
   test('utils.sanitizeHtml: strips malicious script tags and onerror events', () => {
     const dirty = `<div>Safe Content</div><script>alert('xss')</script><img src="x" onerror="alert(1)" />`;
@@ -220,6 +235,50 @@ async function runTests() {
     assert.strictEqual(pdfOutline(off), false);
     assert.strictEqual(pdfOutline(off, { outline: true }), true);
     assert.strictEqual(pdfOutline('# Doc', { outline: false }), false);
+  });
+
+  // 7c. Command line: flags whose value could swallow the input file
+  test('cli: --header needs its text; an input file right after it is refused clearly', () => {
+    const { spawnSync } = require('child_process');
+    const root = path.join(__dirname, '..');
+    const cli = (...args) => spawnSync(process.execPath, ['bin/cli.js', ...args], { cwd: root, encoding: 'utf8' });
+
+    for (const flag of ['--header', '--footer']) {
+      const swallowed = cli(flag, 'examples/sample.md');
+      assert.notStrictEqual(swallowed.status, 0);
+      assert.ok(swallowed.stderr.includes('"examples/sample.md" is an input file, not header/footer text'));
+    }
+    const missing = cli('examples/sample.md', '--header');
+    assert.notStrictEqual(missing.status, 0);
+    assert.ok(missing.stderr.includes("option '--header <text>' argument missing"));
+
+    const out = path.join(os.tmpdir(), `md-pdf-cli-${process.pid}.html`);
+    const works = cli('--header', '{title}', '--footer', '', 'examples/sample.md', '-f', 'html', '-o', out);
+    assert.strictEqual(works.status, 0, works.stderr);
+    const html = fs.readFileSync(out, 'utf8');
+    assert.ok(html.includes('@top-center { content: "Sample Document: Markdown to PDF Conversion";'));
+    assert.ok(!html.includes('@bottom-'));
+    fs.unlinkSync(out);
+  });
+
+  test('cli: --page-numbers reads only full or simple as its value, so an input after it stays an input', () => {
+    const { normalizePageNumbersArgs } = require('../src/cli/options');
+    const argv = ['node', 'cli.js'];
+    assert.deepStrictEqual(normalizePageNumbersArgs([...argv, '--page-numbers', 'README.md']), [...argv, '--page-numbers=full', 'README.md']);
+    assert.deepStrictEqual(normalizePageNumbersArgs([...argv, '--page-numbers', 'Simple', 'a.md']), [...argv, '--page-numbers=simple', 'a.md']);
+    assert.deepStrictEqual(normalizePageNumbersArgs([...argv, 'a.md', '--page-numbers']), [...argv, 'a.md', '--page-numbers=full']);
+    assert.deepStrictEqual(normalizePageNumbersArgs([...argv, '--page-numbers=simple', 'a.md']), [...argv, '--page-numbers=simple', 'a.md']);
+    assert.deepStrictEqual(normalizePageNumbersArgs([...argv, '--', '--page-numbers', 'x']), [...argv, '--', '--page-numbers', 'x']);
+
+    const { spawnSync } = require('child_process');
+    const out = path.join(os.tmpdir(), `md-pdf-pages-${process.pid}.html`);
+    const run = spawnSync(process.execPath, ['bin/cli.js', '--page-numbers', 'examples/sample.md', '-f', 'html', '-o', out], {
+      cwd: path.join(__dirname, '..'),
+      encoding: 'utf8'
+    });
+    assert.strictEqual(run.status, 0, run.stderr);
+    assert.ok(fs.readFileSync(out, 'utf8').includes('@bottom-center { content: "Page " counter(page) " of " counter(pages);'));
+    fs.unlinkSync(out);
   });
 
   // 8. Extension package

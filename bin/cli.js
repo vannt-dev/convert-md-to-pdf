@@ -5,6 +5,7 @@ const { Command } = require('commander');
 const path = require('path');
 const fs = require('fs');
 const { convertMarkdownToPdf } = require('../src/core/index');
+const { normalizePageNumbersArgs, parseMarginText } = require('../src/cli/options');
 const packageJson = require('../package.json');
 
 const OUTPUT_FORMATS = ['pdf', 'html', 'docx', 'epub'];
@@ -30,8 +31,8 @@ program
   .option('-m, --margin <margin>', 'Page margin (e.g. 14mm 12mm 16mm 12mm)', '14mm 12mm 16mm 12mm')
   .option('--toc', 'Auto-generate Table of Contents (TOC)', false)
   .option('--page-numbers [style]', 'Print page numbers in the footer: full ("Page 3 of 12", default) or simple ("3")')
-  .option('--header [text]', 'Running header text; {title}, {author}, {date}, {page}, {pages} are filled in (no text: the title)')
-  .option('--footer [text]', 'Running footer text, same placeholders (no text: "Page {page} of {pages}")')
+  .option('--header <text>', 'Running header text; {title}, {author}, {date}, {page}, {pages} are filled in ("" for none)', parseMarginText)
+  .option('--footer <text>', 'Running footer text, same placeholders ("" for none)', parseMarginText)
   .option('-c, --css <path>', 'Custom CSS stylesheet file path to inject')
   .option('-k, --keep-html', 'Keep temporary HTML file after conversion', false)
   .option('--no-mermaid', 'Disable Mermaid diagram rendering')
@@ -217,4 +218,4 @@ function expandInputFiles(args) {
   return Array.from(filesSet);
 }
 
-program.parse(process.argv);
+program.parse(normalizePageNumbersArgs(process.argv));

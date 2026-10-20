@@ -84,6 +84,8 @@ function parseMarkdownToHtml(rawMarkdownContent, options = {}) {
   const subtitle = frontMatter.subtitle || options.subtitle || '';
   const author = frontMatter.author || options.author || '';
   const date = frontMatter.date || options.date || '';
+  // Document language, as for EPUB: sets the cover labels and the page's lang attribute
+  const language = String(frontMatter.lang || frontMatter.language || options.language || 'en');
 
   // 2. Merge options
   const mergedOptions = {
@@ -122,7 +124,8 @@ function parseMarkdownToHtml(rawMarkdownContent, options = {}) {
     subtitle,
     author,
     date,
-    cover: mergedOptions.cover
+    cover: mergedOptions.cover,
+    language
   });
 
   // 5. Read custom CSS file if specified
@@ -165,6 +168,7 @@ function parseMarkdownToHtml(rawMarkdownContent, options = {}) {
   return getHtmlTemplate({
     title,
     author,
+    language,
     bodyHtml,
     options: {
       ...mergedOptions,
