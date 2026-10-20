@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { parseMarkdownToHtml } = require('./parser');
 const { renderHtmlToPdf } = require('../browser/renderer');
-const { resolvePath } = require('./utils');
+const { resolvePath, parseFrontMatter } = require('./utils');
 const { expandIncludes } = require('./include');
 const { markdownToDocx } = require('./docx');
 const { markdownToEpub } = require('./epub');
@@ -28,6 +28,18 @@ function temporaryHtmlPath(absInputPath, absOutputPath) {
   } catch (_) {
     return path.join(path.dirname(absOutputPath), name);
   }
+}
+
+/**
+ * Whether the PDF gets bookmarks from its headings: on unless `outline: false` is passed
+ * or set in the front matter (an option wins over the front matter).
+ * @param {string} markdown
+ * @param {Object} options
+ * @returns {boolean}
+ */
+function pdfOutline(markdown, options = {}) {
+  if (options.outline !== undefined) return options.outline !== false;
+  return parseFrontMatter(markdown).data.outline !== false;
 }
 
 /**
@@ -99,8 +111,8 @@ async function convertMarkdownToPdf(inputPath, outputPath, options = {}) {
     // Save temporary HTML file
     fs.writeFileSync(tempHtmlPath, htmlContent, 'utf8');
 
-    // Render HTML to PDF via headless browser
-    await renderHtmlToPdf(tempHtmlPath, absOutputPath, options);
+    // Render HTML to PDF via headless browser, with bookmarks unless turned off
+    await renderHtmlToPdf(tempHtmlPath, absOutputPath, { ...options, outline: pdfOutline(markdownContent, options) });
 
     // Clean up temporary HTML file unless explicitly requested to keep
     if (!options.keepHtml) {
@@ -130,6 +142,7 @@ module.exports = {
   markdownToDocx,
   markdownToEpub,
   parseMarkdownToHtml,
+  pdfOutline,
   renderHtmlToPdf,
   temporaryHtmlPath
 };

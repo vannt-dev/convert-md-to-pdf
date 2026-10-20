@@ -35,6 +35,7 @@ program
   .option('--no-katex', 'Disable KaTeX math formula rendering')
   .option('--no-highlight', 'Disable syntax highlighting of code blocks')
   .option('--no-include', 'Leave @import "file" lines as they are instead of inserting the file')
+  .option('--no-outline', 'Leave out the PDF bookmarks (outline) made from the headings')
   .option('-b, --browser <path>', 'Custom Chrome/Edge executable path')
   .action(async (inputArgs, options) => {
     try {
@@ -104,6 +105,8 @@ program
             katex: options.katex,
             highlight: options.highlight,
             include: options.include,
+            // Only an explicit --no-outline overrides `outline:` in the front matter.
+            outline: options.outline === false ? false : undefined,
             executablePath: options.browser
           });
 

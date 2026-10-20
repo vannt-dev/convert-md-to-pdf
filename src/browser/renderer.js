@@ -50,6 +50,29 @@ function findBrowserExecutable() {
 }
 
 /**
+ * The command line that prints a page to PDF with headless Chrome/Edge.
+ * @param {string} fileUrl Page to print
+ * @param {string} outputPath PDF to write
+ * @param {Object} [options]
+ * @param {boolean} [options.legacyHeadless] Use `--headless` for browsers without `--headless=new`
+ * @param {boolean} [options.outline] Add PDF bookmarks from the headings (default true)
+ * @returns {string[]}
+ */
+function buildBrowserArgs(fileUrl, outputPath, options = {}) {
+  return [
+    options.legacyHeadless ? '--headless' : '--headless=new',
+    '--disable-gpu',
+    '--no-sandbox',
+    '--no-pdf-header-footer',
+    // Bookmarks from h1-h6. A browser that does not know the switch ignores it.
+    ...(options.outline === false ? [] : ['--generate-pdf-document-outline']),
+    '--virtual-time-budget=8000',
+    `--print-to-pdf=${outputPath}`,
+    fileUrl
+  ];
+}
+
+/**
  * Renders HTML file to PDF using headless browser
  * @param {string} htmlPath 
  * @param {string} outputPath 
@@ -65,28 +88,12 @@ function renderHtmlToPdf(htmlPath, outputPath, options = {}) {
     }
 
     const fileUrl = 'file:///' + path.resolve(htmlPath).replace(/\\/g, '/');
-    const args = [
-      '--headless=new',
-      '--disable-gpu',
-      '--no-sandbox',
-      '--no-pdf-header-footer',
-      '--virtual-time-budget=8000',
-      `--print-to-pdf=${outputPath}`,
-      fileUrl
-    ];
+    const args = buildBrowserArgs(fileUrl, outputPath, { outline: options.outline });
 
     execFile(browserPath, args, { timeout: 30000 }, (error) => {
       if (error) {
         // Fallback for older chrome versions that don't support --headless=new
-        const fallbackArgs = [
-          '--headless',
-          '--disable-gpu',
-          '--no-sandbox',
-          '--no-pdf-header-footer',
-          '--virtual-time-budget=8000',
-          `--print-to-pdf=${outputPath}`,
-          fileUrl
-        ];
+        const fallbackArgs = buildBrowserArgs(fileUrl, outputPath, { outline: options.outline, legacyHeadless: true });
 
         execFile(browserPath, fallbackArgs, { timeout: 30000 }, (err2) => {
           if (err2) {
@@ -136,6 +143,7 @@ async function renderBatchHtmlToPdf(itemPairs, options = {}) {
 }
 
 module.exports = {
+  buildBrowserArgs,
   findBrowserExecutable,
   renderHtmlToPdf,
   renderBatchHtmlToPdf
