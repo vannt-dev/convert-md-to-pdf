@@ -14,6 +14,7 @@
   <script src="../lib/katex.min.js"></script>
   <script src="../lib/marked.min.js"></script>
   <script src="../lib/footnotes.js"></script>
+  <script src="../lib/pagemarks.js"></script>
   <script src="../lib/highlight.min.js"></script>
   <script src="../lib/mermaid.min.js"></script>
 
@@ -105,31 +106,13 @@
       opacity: 0.9;
     }
 
-    /* Custom Print Header/Footer for clean PDF output */
-    .custom-print-footer {
-      display: none;
-    }
-
+    /* Page numbers and the running header/footer are @page margin boxes (lib/pagemarks.js) */
     @media print {
       .no-print {
         display: none !important;
       }
       body {
         padding: 0 !important;
-      }
-      .custom-print-footer {
-        display: flex !important;
-        justify-content: space-between;
-        align-items: center;
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        font-size: 9px;
-        color: #64748b;
-        border-top: 1px solid #e2e8f0;
-        padding: 4px 0;
-        font-family: 'Inter', sans-serif;
       }
     }
 
@@ -185,11 +168,11 @@
     </div>
 
     <div class="toolbar-right">
-      <span class="print-tip" title="Bỏ chọn 'Headers & footers' trong tùy chọn in của Chrome để ẩn link URL">💡 Bỏ chọn 'Headers & footers' khi in</span>
-      <button id="btn-download-html" class="btn-secondary-action" title="Tải trực tiếp file HTML tĩnh">
+      <span class="print-tip" title="Untick 'Headers and footers' in the print dialog so the browser does not add the page URL and date">💡 Untick 'Headers and footers' when printing</span>
+      <button id="btn-download-html" class="btn-secondary-action" title="Download a static HTML file">
         📥 Download HTML
       </button>
-      <button id="btn-trigger-print" class="btn-print" title="Mở hộp thoại Lưu PDF / In">
+      <button id="btn-trigger-print" class="btn-print" title="Open the Save as PDF / Print dialog">
         🖨️ Save as PDF
       </button>
     </div>
@@ -198,12 +181,6 @@
   <!-- Document Output -->
   <div id="document-container">
     <div id="content">Loading document...</div>
-  </div>
-
-  <!-- Custom Print Footer Element -->
-  <div class="custom-print-footer">
-    <span>📄 Convert MD to PDF Extension</span>
-    <span id="print-footer-title">Document</span>
   </div>
 
   <script src="preview.js"></script>

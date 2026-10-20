@@ -18,8 +18,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const options = data.pendingOptions || {};
 
     document.title = title;
-    const footerTitleEl = document.getElementById('print-footer-title');
-    if (footerTitleEl) footerTitleEl.textContent = title;
 
     if (options.theme) themeSelect.value = options.theme;
     if (options.font && fontSelect) fontSelect.value = options.font;
@@ -75,6 +73,16 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderDocument(markdownText, options) {
     // Apply CSS theme styles
     themeStyleEl.textContent = getThemeStyles(options.theme || 'modern', options.pageSize || 'A4', options.customCss || '', options.font || '');
+
+    // Page numbers and running header/footer, printed in the page margins
+    if (typeof MdPdfPageMarks !== 'undefined') {
+      const pageMarks = MdPdfPageMarks.pageMarksCss(
+        { header: options.header, footer: options.footer, pageNumbers: options.pageNumbers, font: options.font },
+        { title: document.title }
+      );
+      // Before the custom CSS, so that it can restyle them.
+      if (pageMarks) themeStyleEl.textContent = pageMarks + '\n' + themeStyleEl.textContent;
+    }
 
     // Preprocess footnotes, LaTeX & Symbols
     const processedMd = preprocessMarkdown(MdPdfFootnotes.applyFootnotes(markdownText));

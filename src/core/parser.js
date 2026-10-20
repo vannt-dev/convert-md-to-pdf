@@ -12,6 +12,7 @@ const {
 } = require('./utils');
 const { getHtmlTemplate } = require('./templates');
 const { applyFootnotes } = require('./footnotes');
+const { pageMarksCss } = require('./pagemarks');
 
 /**
  * Builds marked custom renderer for diagrams, UI mockups, and headings
@@ -93,8 +94,10 @@ function parseMarkdownToHtml(rawMarkdownContent, options = {}) {
     margin: options.margin || frontMatter.margin || '14mm 12mm 16mm 12mm',
     toc: options.toc !== undefined ? options.toc : (frontMatter.toc || false),
     cover: options.cover !== undefined ? options.cover : (frontMatter.cover || false),
-    header: options.header !== undefined ? options.header : (frontMatter.header || true),
-    footer: options.footer !== undefined ? options.footer : (frontMatter.footer || true),
+    // Running header/footer and page numbers: off unless asked for (see pagemarks.js)
+    header: options.header !== undefined ? options.header : frontMatter.header,
+    footer: options.footer !== undefined ? options.footer : frontMatter.footer,
+    pageNumbers: options.pageNumbers !== undefined ? options.pageNumbers : frontMatter.pageNumbers,
     mermaid: options.mermaid !== undefined ? options.mermaid : (frontMatter.mermaid !== false),
     katex: options.katex !== undefined ? options.katex : (frontMatter.katex !== false),
     highlight: options.highlight !== undefined ? options.highlight : (frontMatter.highlight !== false),
@@ -126,6 +129,15 @@ function parseMarkdownToHtml(rawMarkdownContent, options = {}) {
   let customCss = mergedOptions.customCss || '';
   if (mergedOptions.cssFile) {
     customCss += '\n' + readCustomCss(mergedOptions.cssFile);
+  }
+
+  // Page numbers and running header/footer, printed in the page margins
+  const pageCss = pageMarksCss(
+    { header: mergedOptions.header, footer: mergedOptions.footer, pageNumbers: mergedOptions.pageNumbers, font: mergedOptions.font },
+    { title, author, date }
+  );
+  if (pageCss) {
+    customCss = pageCss + '\n' + customCss;
   }
 
   // 6. Parse Markdown using custom renderer

@@ -11,6 +11,7 @@ const {
 } = require('../src/core/utils');
 const { parseMarkdownToHtml } = require('../src/core/parser');
 const { applyFootnotes } = require('../src/core/footnotes');
+const { pageMarksCss, pageMarkBoxes } = require('../src/core/pagemarks');
 const { convertMarkdownToPdf } = require('../src/core/index');
 const { expandIncludes } = require('../src/core/include');
 const { buildDocument, plainText } = require('../src/core/docmodel');
@@ -210,6 +211,70 @@ async function runTests() {
     }
     const missing = needed.filter((file) => !tracked.has(`extension/${file}`));
     assert.deepStrictEqual(missing, []);
+  });
+
+  // 8b. Page numbers and running header/footer
+  test('pagemarks: nothing is printed in the margins unless asked for', () => {
+    assert.strictEqual(pageMarksCss({}), '');
+    assert.strictEqual(pageMarksCss({ header: false, footer: '', pageNumbers: false }), '');
+    const html = parseMarkdownToHtml('---\ncover: true\n---\n# Plain\n\nText.');
+    assert.ok(!/@(top|bottom)-/.test(html));
+    assert.ok(!html.includes('page: cover'));
+  });
+
+  test('pagemarks: page numbers come in a full and a simple style; others are refused', () => {
+    assert.deepStrictEqual(pageMarkBoxes({ pageNumbers: true }), { 'bottom-center': 'Page {page} of {pages}' });
+    assert.deepStrictEqual(pageMarkBoxes({ pageNumbers: 'Simple' }), { 'bottom-center': '{page}' });
+    assert.ok(pageMarksCss({ pageNumbers: 'full' }).includes('@bottom-center { content: "Page " counter(page) " of " counter(pages);'));
+    assert.ok(pageMarksCss({ pageNumbers: 'simple' }).includes('@bottom-center { content: counter(page);'));
+    assert.throws(() => pageMarksCss({ pageNumbers: 'roman' }), /Unknown page number style "roman"/);
+  });
+
+  test('pagemarks: header and footer fill in placeholders and stay inside their CSS string', () => {
+    assert.deepStrictEqual(pageMarkBoxes({ header: true, footer: 'Draft', pageNumbers: true }), {
+      'top-center': '{title}',
+      'bottom-left': 'Draft',
+      'bottom-right': 'Page {page} of {pages}'
+    });
+    assert.deepStrictEqual(pageMarkBoxes({ footer: true }), { 'bottom-center': 'Page {page} of {pages}' });
+    const css = pageMarksCss(
+      { header: '{title} by {author}', footer: '{date} | {page}/{pages} {unknown}' },
+      { title: 'Say "hi" \\ </style><script>', author: 'Ann', date: '2026-10-20' }
+    );
+    assert.ok(css.includes('@top-center { content: "Say \\"hi\\" \\\\ \\3C /style>\\3C script> by Ann";'));
+    assert.ok(css.includes('@bottom-center { content: "2026-10-20 | " counter(page) "/" counter(pages) " {unknown}";'));
+    assert.ok(!css.includes('</style>'));
+    // The cover page is printed without them.
+    assert.ok(css.includes('.cover-page { page: cover; }'));
+    assert.ok(css.includes('@page cover {\n  @top-center { content: none; }\n  @bottom-center { content: none; }\n}'));
+  });
+
+  test('parser.parseMarkdownToHtml: header, footer and page numbers come from front matter, options win', () => {
+    const md = '---\ntitle: Field Guide\nheader: true\npageNumbers: simple\n---\n# Field Guide\n\nText.';
+    const html = parseMarkdownToHtml(md);
+    assert.ok(html.includes('@top-center { content: "Field Guide";'));
+    assert.ok(html.includes('@bottom-center { content: counter(page);'));
+    assert.ok(html.includes('font-family: "Inter", sans-serif'));
+    const overridden = parseMarkdownToHtml(md, { header: 'Internal', pageNumbers: false });
+    assert.ok(overridden.includes('@top-center { content: "Internal";'));
+    assert.ok(!overridden.includes('@bottom-'));
+    // Custom CSS comes after, so it can restyle the margins.
+    const custom = parseMarkdownToHtml(md, { customCss: '@page { @top-center { color: red; } }' });
+    assert.ok(custom.indexOf('content: "Field Guide"') < custom.indexOf('color: red'));
+  });
+
+  test('extension: ships the same page number code as the CLI and prints no fixed footer', () => {
+    const root = path.join(__dirname, '..');
+    assert.strictEqual(
+      fs.readFileSync(path.join(root, 'extension/lib/pagemarks.js'), 'utf8'),
+      fs.readFileSync(path.join(root, 'src/core/pagemarks.js'), 'utf8')
+    );
+    const preview = fs.readFileSync(path.join(root, 'extension/preview/preview.js'), 'utf8');
+    assert.ok(preview.includes('MdPdfPageMarks.pageMarksCss('));
+    const page = fs.readFileSync(path.join(root, 'extension/preview/preview.html'), 'utf8');
+    assert.ok(page.includes('<script src="../lib/pagemarks.js"></script>'));
+    assert.ok(!page.includes('Convert MD to PDF Extension'));
+    assert.ok(!/[ạảãáàâấầẩẫậăắằẳẵặđẹẻẽéèêếềểễệịỉĩíìọỏõóòôốồổỗộơớờởỡợụủũúùưứừửữựỵỷỹýỳ]/i.test(page));
   });
 
   // 9. Footnotes
