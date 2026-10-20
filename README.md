@@ -161,9 +161,11 @@ font: Inter
 pageSize: A4
 landscape: false
 highlight: true
-header: "{title}"          # running header; true also means the title
-footer: "Engineering Team" # running footer
-pageNumbers: full          # full ("Page 3 of 12"), simple ("3") or false
+# running header and footer; header: true also means the title
+header: "{title}"
+footer: "Engineering Team"
+# full ("Page 3 of 12"), simple ("3") or false
+pageNumbers: full
 ---
 # Document Executive Summary
 ...
