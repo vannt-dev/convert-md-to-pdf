@@ -23,7 +23,9 @@ anything else is not published by vannt-dev.
   - Convert active web page or GitHub raw Markdown files with 1 click.
   - Context menu integration: Right-click selected Markdown text or any page -> "Convert to PDF".
   - Full-page Print Preview with live theme switching, Font Selector, Auto TOC, Custom CSS, and native PDF/HTML export.
+  - Page numbers and a running header/footer, set in the popup (off by default).
 - 📑 **Auto Cover Page Generator**: Generate elegant document report cover pages via YAML Front Matter (`cover: true`) or `--cover` flag.
+- 🔢 **Page Numbers & Running Header/Footer**: `--page-numbers` prints "Page 3 of 12" at the foot of each page (`--page-numbers simple` prints "3"). `--header` and `--footer` print a line of text at the top and foot of each page, with `{title}`, `{author}`, `{date}`, `{page}` and `{pages}` filled in; `--header` alone prints the document title. With both a footer and page numbers, the footer text sits left and the numbers right. The cover page is printed without them, but counts as page 1. All off by default; front matter keys `header`, `footer` and `pageNumbers` do the same. PDF only (the CLI and the extension); Word and EPUB leave them out.
 - 📌 **Dotted Leader Line Table of Contents (TOC)**: Auto-generates publication-grade TOC with dotted leader lines (`...`) and clickable anchor links (`--toc`).
 - 🎨 **7 Preset Themes**: `modern` (default), `dark`, `academic`, `github`, `ebook`, `cyberpunk`, and `minimal`.
 - 🔤 **Open-Source Font Selector**: 100% free under SIL OFL / Apache 2.0 (`Inter`, `Roboto`, `Lora`, `Merriweather`, `JetBrains Mono`, `Fira Code`).
@@ -127,6 +129,9 @@ toc: true
 | `--font <font>` | | Font family: `Inter`, `Roboto`, `Lora`, `Merriweather`, `JetBrains Mono`, `Fira Code` | `Inter` |
 | `--cover` | | Auto-generate document report Cover Page | `false` |
 | `--toc` | | Auto-generate Table of Contents with Dotted Leader Lines | `false` |
+| `--page-numbers [style]` | | Page numbers at the foot of each page: `full` ("Page 3 of 12") or `simple` ("3") | off (`full` when given alone) |
+| `--header [text]` | | Running header; `{title}`, `{author}`, `{date}`, `{page}`, `{pages}` are filled in | off (the title when given alone) |
+| `--footer [text]` | | Running footer, same placeholders | off ("Page {page} of {pages}" when given alone) |
 | `-p, --page-size <size>`| | Paper size: `A4`, `Letter`, `A3`, `Legal` | `A4` |
 | `-l, --landscape` | | Use landscape page orientation | `false` |
 | `-m, --margin <margin>`| | Custom page margin (e.g. `14mm 12mm 16mm 12mm`) | `14mm 12mm 16mm 12mm` |
@@ -156,6 +161,11 @@ font: Inter
 pageSize: A4
 landscape: false
 highlight: true
+# running header and footer; header: true also means the title
+header: "{title}"
+footer: "Engineering Team"
+# full ("Page 3 of 12"), simple ("3") or false
+pageNumbers: full
 ---
 # Document Executive Summary
 ...
@@ -163,13 +173,10 @@ highlight: true
 
 ---
 
-## 🌿 Git Flow & Automated Release Workflow
-
-This project follows standard **Git Flow** branching and automated release publishing:
+## 🌿 Branching & Automated Release Workflow
 
 ### 🔀 Branching Strategy
-- **`main`**: Production-ready branch. Stores stable releases. Pushing a version tag `v*` from `main` triggers a release.
-- **`develop`**: Active development branch. Daily commits, feature additions, and refactoring take place here.
+- **`main`**: The default branch. Changes arrive through pull requests from short-lived feature branches, and pushing a version tag `v*` from `main` triggers a release.
 
 ### 🚀 Automated Release Pipeline
 Whenever a version tag `v*` is pushed, GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)) builds from that tag and automatically:
@@ -223,18 +230,19 @@ convert-md-to-pdf/
 │   │   ├── utils.js         # Preprocessors & helper re-exports
 │   │   ├── parser.js        # Pipeline parser (Markdown -> HTML)
 │   │   ├── templates.js     # HTML document template builder
+│   │   ├── pagemarks.js     # Page numbers & running header/footer CSS (shared with the extension)
 │   │   └── index.js         # Main library API entrypoint
 │   └── browser/             # Headless browser rendering engine
-│       └── renderer.js      # Puppeteer Chrome/Edge launcher & PDF worker pool
+│       └── renderer.js      # Runs installed Chrome/Edge headless (--print-to-pdf) & PDF worker pool
 ├── extension/               # Browser Extension (Manifest V3)
 │   ├── manifest.json
 │   ├── background/          # Service worker & context menus
 │   ├── content/             # Content script for raw MD pages
 │   ├── popup/               # Extension Popup UI (Batch file, Paste, Page, History)
 │   ├── preview/             # Print Preview & PDF/HTML export page
-│   ├── lib/                 # Vendor libraries (marked, mermaid, katex)
+│   ├── lib/                 # Vendor libraries (marked, mermaid, katex) & code shared with the CLI
 │   └── icons/               # Extension icons (16, 48, 128)
-├── tests/                   # Standalone test suite (7/7 PASS)
+├── tests/                   # Standalone test suite (`npm test`)
 │   └── index.test.js
 ├── dist/                    # Built Chrome Extension zip artifacts
 ├── examples/                # Usage examples & custom CSS templates

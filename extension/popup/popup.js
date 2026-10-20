@@ -20,6 +20,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const chkMermaid = document.getElementById('chk-mermaid');
   const chkKatex = document.getElementById('chk-katex');
   const customCssInput = document.getElementById('custom-css-input');
+  const pageNumbersSelect = document.getElementById('page-numbers');
+  const headerInput = document.getElementById('header-input');
+  const footerInput = document.getElementById('footer-input');
   const btnConvert = document.getElementById('btn-convert');
 
   let loadedFileContent = null;
@@ -27,7 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let saveDraftTimeout = null;
 
   // Load saved preferences & draft
-  chrome.storage.sync.get(['theme', 'font', 'pageSize', 'toc', 'cover', 'mermaid', 'katex', 'customCss'], (items) => {
+  chrome.storage.sync.get(['theme', 'font', 'pageSize', 'toc', 'cover', 'mermaid', 'katex', 'customCss', 'pageNumbers', 'header', 'footer'], (items) => {
     if (items.theme) themeSelect.value = items.theme;
     if (items.font && fontSelect) fontSelect.value = items.font;
     if (items.pageSize) pageSizeSelect.value = items.pageSize;
@@ -36,6 +39,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (items.mermaid !== undefined) chkMermaid.checked = items.mermaid;
     if (items.katex !== undefined) chkKatex.checked = items.katex;
     if (items.customCss) customCssInput.value = items.customCss;
+    if (items.pageNumbers && pageNumbersSelect) pageNumbersSelect.value = items.pageNumbers;
+    if (items.header && headerInput) headerInput.value = items.header;
+    if (items.footer && footerInput) footerInput.value = items.footer;
   });
 
   // Restore Draft Markdown
@@ -231,7 +237,10 @@ document.addEventListener('DOMContentLoaded', () => {
       cover: chkCover ? chkCover.checked : false,
       mermaid: chkMermaid.checked,
       katex: chkKatex.checked,
-      customCss: customCssInput.value
+      customCss: customCssInput.value,
+      pageNumbers: pageNumbersSelect ? pageNumbersSelect.value : '',
+      header: headerInput ? headerInput.value : '',
+      footer: footerInput ? footerInput.value : ''
     };
 
     // Save preferences

@@ -95,6 +95,15 @@
           <option value="Legal">Legal</option>
         </select>
       </div>
+
+      <div class="setting-item">
+        <label for="page-numbers">Page Numbers</label>
+        <select id="page-numbers">
+          <option value="" selected>Off</option>
+          <option value="full">Page 3 of 12</option>
+          <option value="simple">3</option>
+        </select>
+      </div>
     </div>
 
     <div class="checkbox-group">
@@ -103,6 +112,16 @@
       <label><input type="checkbox" id="chk-mermaid" checked> Mermaid</label>
       <label><input type="checkbox" id="chk-katex" checked> Math</label>
     </div>
+
+    <!-- Running Header & Footer Drawer -->
+    <details class="custom-css-drawer header-footer-drawer">
+      <summary>🔖 Header &amp; Footer</summary>
+      <label for="header-input">Header text</label>
+      <input type="text" id="header-input" placeholder="e.g. {title}">
+      <label for="footer-input">Footer text</label>
+      <input type="text" id="footer-input" placeholder="e.g. {author} · {date}">
+      <span class="drawer-hint">Placeholders: {title} {author} {date} {page} {pages}</span>
+    </details>
 
     <!-- Advanced Custom CSS Drawer -->
     <details class="custom-css-drawer">

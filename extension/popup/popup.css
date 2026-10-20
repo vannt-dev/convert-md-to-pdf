@@ -280,6 +280,35 @@ select:focus {
   cursor: pointer;
 }
 
+/* Header & Footer Drawer */
+.header-footer-drawer label {
+  display: block;
+  margin-top: 6px;
+}
+
+.header-footer-drawer input[type="text"] {
+  width: 100%;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  color: #f8fafc;
+  padding: 5px 6px;
+  font-size: 11px;
+  margin-top: 3px;
+  outline: none;
+}
+
+.header-footer-drawer input[type="text"]:focus {
+  border-color: #38bdf8;
+}
+
+.drawer-hint {
+  display: block;
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 10px;
+}
+
 /* Custom CSS Drawer */
 .custom-css-drawer {
   background: #1e293b;

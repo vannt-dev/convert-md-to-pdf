@@ -29,6 +29,9 @@ program
   .option('-l, --landscape', 'Use landscape orientation', false)
   .option('-m, --margin <margin>', 'Page margin (e.g. 14mm 12mm 16mm 12mm)', '14mm 12mm 16mm 12mm')
   .option('--toc', 'Auto-generate Table of Contents (TOC)', false)
+  .option('--page-numbers [style]', 'Print page numbers in the footer: full ("Page 3 of 12", default) or simple ("3")')
+  .option('--header [text]', 'Running header text; {title}, {author}, {date}, {page}, {pages} are filled in (no text: the title)')
+  .option('--footer [text]', 'Running footer text, same placeholders (no text: "Page {page} of {pages}")')
   .option('-c, --css <path>', 'Custom CSS stylesheet file path to inject')
   .option('-k, --keep-html', 'Keep temporary HTML file after conversion', false)
   .option('--no-mermaid', 'Disable Mermaid diagram rendering')
@@ -61,6 +64,7 @@ program
         console.log(`   Paper:  ${options.pageSize} (${options.landscape ? 'Landscape' : 'Portrait'})`);
         if (options.cover) console.log(`   Cover:  Auto-generated Cover Page Enabled`);
         if (options.toc) console.log(`   TOC:    Auto-generated Table of Contents Enabled`);
+        if (options.pageNumbers) console.log(`   Pages:  Page numbers (${options.pageNumbers === true ? 'full' : options.pageNumbers})`);
         if (options.css) console.log(`   CSS:    ${path.resolve(options.css)}`);
 
         let targetOutputDir = null;
@@ -98,6 +102,9 @@ program
             margin: options.margin,
             toc: options.toc,
             cover: options.cover,
+            header: options.header,
+            footer: options.footer,
+            pageNumbers: options.pageNumbers,
             cssFile: options.css,
             keepHtml: options.keepHtml,
             mermaid: options.mermaid,
