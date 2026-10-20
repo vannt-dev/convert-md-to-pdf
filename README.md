@@ -37,6 +37,7 @@ anything else is not published by vannt-dev.
 - 📐 **LaTeX Math Support**: Mathematical equations rendered with KaTeX.
 - 📝 **Footnotes**: `text[^1]` with `[^1]: the note` anywhere in the file. Notes are numbered in the order they are first referenced, gathered at the end of the document, and linked both ways. Works in the CLI and in the extension preview.
 - 📘 **Word & EPUB Export (CLI)**: `-f docx` writes a Word document and `-f epub` an EPUB 3 e-book, straight from the Markdown and without a browser. Headings, lists (nested, numbered from any start, task lists), tables with their alignment, code blocks, quotes, footnotes, links and local images become the real thing in each format — Word styles you can restyle, a chapter per top-level heading and a navigation menu in the EPUB. `--toc`, `--cover`, page size, orientation and margins apply to Word; `--toc` and `--cover` to EPUB. Themes, custom CSS, Mermaid diagrams and KaTeX math are for PDF and HTML only: a diagram or formula is kept as its source. An image on the web is not downloaded — it is named in Word and becomes a link in the EPUB — and a link to a neighbouring file keeps its text only.
+- 🔖 **PDF Bookmarks (CLI)**: The PDF gets an outline (bookmarks) built from its headings, nested by level, so a PDF viewer's sidebar can jump to any section. On by default; `--no-outline` or `outline: false` in the front matter leaves it out. The extension prints through the browser's print dialog, which does not add bookmarks.
 - 📎 **File Includes (CLI)**: A line that holds only `@import "chapters/intro.md"` is replaced by that file, relative to the file the line is in. A Markdown file is inserted as Markdown (without its front matter) and may import further files; any other file — `@import "src/app.js"` — is inserted as a code block labelled with its extension. Lines inside a code block are left alone, a missing file or files that import each other stop the conversion with the file and line, and watch mode follows the imported files. `--no-include` turns it off.
 - 💡 **GitHub Callout Box Alerts**: Support for `> [!NOTE]`, `> [!TIP]`, `> [!WARNING]`, `> [!IMPORTANT]`, and `> [!CAUTION]`.
 - 💻 **ASCII UI Mockups**: Styled dark-theme boxes for terminal output & ASCII wireframe mockups.
@@ -141,6 +142,7 @@ toc: true
 | `--no-katex` | | Disable KaTeX math formula rendering | `false` |
 | `--no-highlight` | | Disable syntax highlighting of code blocks | `false` |
 | `--no-include` | | Leave `@import "file"` lines as they are instead of inserting the file | `false` |
+| `--no-outline` | | Leave out the PDF bookmarks (outline) made from the headings | `false` |
 
 ---
 

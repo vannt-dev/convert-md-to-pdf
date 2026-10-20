@@ -193,6 +193,35 @@ async function runTests() {
     assert.strictEqual(path.dirname(temporaryHtmlPath(missing, elsewhere)), path.dirname(elsewhere));
   });
 
+  // 7b. PDF bookmarks
+  test('renderer.buildBrowserArgs: bookmarks from headings unless turned off, also for old browsers', () => {
+    const { buildBrowserArgs } = require('../src/browser/renderer');
+    const args = buildBrowserArgs('file:///C:/doc.html', 'C:/doc.pdf');
+    assert.deepStrictEqual(args, [
+      '--headless=new',
+      '--disable-gpu',
+      '--no-sandbox',
+      '--no-pdf-header-footer',
+      '--generate-pdf-document-outline',
+      '--virtual-time-budget=8000',
+      '--print-to-pdf=C:/doc.pdf',
+      'file:///C:/doc.html'
+    ]);
+    const legacy = buildBrowserArgs('file:///C:/doc.html', 'C:/doc.pdf', { legacyHeadless: true });
+    assert.strictEqual(legacy[0], '--headless');
+    assert.ok(legacy.includes('--generate-pdf-document-outline'));
+    assert.ok(!buildBrowserArgs('u', 'o', { outline: false }).includes('--generate-pdf-document-outline'));
+  });
+
+  test('core.pdfOutline: on by default, off by front matter, an option wins', () => {
+    const { pdfOutline } = require('../src/core/index');
+    assert.strictEqual(pdfOutline('# Doc'), true);
+    const off = '---\noutline: false\n---\n# Doc';
+    assert.strictEqual(pdfOutline(off), false);
+    assert.strictEqual(pdfOutline(off, { outline: true }), true);
+    assert.strictEqual(pdfOutline('# Doc', { outline: false }), false);
+  });
+
   // 8. Extension package
   test('extension: every page and script the manifest and pages refer to is tracked by git', () => {
     const { execFileSync } = require('child_process');
