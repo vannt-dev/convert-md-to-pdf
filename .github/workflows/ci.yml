@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     strategy:
       matrix:
@@ -35,20 +35,20 @@ jobs:
       - name: Run Extension Build
         run: node scripts/build-extension.js
   commits:
-    uses: vannt-dev/repokeeper/.github/workflows/commitlint.yml@v0
+    uses: vannt-dev/repokeeper/.github/workflows/commitlint.yml@ci/ubuntu-26-trial
   node:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     uses: vannt-dev/repokeeper/.github/workflows/stack-node.yml@v0
     with:
       node-versions: '["22","24"]'
-      os: '["ubuntu-latest"]'
+      os: '["ubuntu-26.04"]'
       package-manager: npm
       install-command: npm ci
       cache: npm
       scripts: '["test"]'
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       pull-requests: read
     outputs:
