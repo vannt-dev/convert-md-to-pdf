@@ -351,6 +351,33 @@ async function runTests() {
     assert.ok(custom.indexOf('content: "Field Guide"') < custom.indexOf('color: red'));
   });
 
+  test('pagemarks: a watermark is faint diagonal text on every page, kept inside its CSS string', () => {
+    assert.strictEqual(pageMarksCss({ watermark: '' }), '');
+    assert.strictEqual(pageMarksCss({ watermark: '   ' }), '');
+    const css = pageMarksCss({ watermark: 'DRAFT', font: 'Inter' });
+    assert.ok(css.startsWith('/* Watermark */\nbody::after { content: "DRAFT"; position: fixed;'));
+    assert.ok(css.includes('rotate(-35deg)'));
+    assert.ok(css.includes('font-family: "Inter", sans-serif; font-size: 96px;'));
+    assert.ok(!css.includes('@page'));
+    // long text gets smaller, down to a floor
+    assert.ok(pageMarksCss({ watermark: 'CONFIDENTIAL - DO NOT SHARE' }).includes('font-size: 40px;'));
+    assert.ok(pageMarksCss({ watermark: 'x'.repeat(200) }).includes('font-size: 28px;'));
+    const tricky = pageMarksCss({ watermark: 'Say "hi" </style>' });
+    assert.ok(tricky.includes('content: "Say \\"hi\\" \\3C /style>";'));
+    assert.ok(!tricky.includes('</style>'));
+    // with margin texts, it comes after them
+    const both = pageMarksCss({ pageNumbers: true, watermark: 'DRAFT' });
+    assert.ok(both.indexOf('@bottom-center') < both.indexOf('/* Watermark */'));
+  });
+
+  test('parser.parseMarkdownToHtml: the watermark comes from front matter, options win', () => {
+    const md = '---\nwatermark: Internal\n---\n# Memo\n\nText.';
+    assert.ok(parseMarkdownToHtml(md).includes('body::after { content: "Internal";'));
+    assert.ok(parseMarkdownToHtml(md, { watermark: 'DRAFT' }).includes('body::after { content: "DRAFT";'));
+    assert.ok(!parseMarkdownToHtml(md, { watermark: '' }).includes('body::after'));
+    assert.ok(!parseMarkdownToHtml('# Plain\n\nText.').includes('body::after'));
+  });
+
   test('extension: ships the same page number code as the CLI and prints no fixed footer', () => {
     const root = path.join(__dirname, '..');
     assert.strictEqual(

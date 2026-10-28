@@ -33,6 +33,7 @@ program
   .option('--page-numbers [style]', 'Print page numbers in the footer: full ("Page 3 of 12", default) or simple ("3")')
   .option('--header <text>', 'Running header text; {title}, {author}, {date}, {page}, {pages} are filled in ("" for none)', parseMarginText)
   .option('--footer <text>', 'Running footer text, same placeholders ("" for none)', parseMarginText)
+  .option('--watermark <text>', 'Faint diagonal text across every page, e.g. DRAFT (PDF and HTML; "" for none)', parseMarginText)
   .option('-c, --css <path>', 'Custom CSS stylesheet file path to inject')
   .option('-k, --keep-html', 'Keep temporary HTML file after conversion', false)
   .option('--no-mermaid', 'Disable Mermaid diagram rendering')
@@ -66,6 +67,7 @@ program
         console.log(`   Paper:  ${options.pageSize} (${options.landscape ? 'Landscape' : 'Portrait'})`);
         if (options.cover) console.log(`   Cover:  Auto-generated Cover Page Enabled`);
         if (options.toc) console.log(`   TOC:    Auto-generated Table of Contents Enabled`);
+        if (options.watermark) console.log(`   Mark:   Watermark "${options.watermark}"`);
         if (options.pageNumbers) console.log(`   Pages:  Page numbers (${options.pageNumbers === true ? 'full' : options.pageNumbers})`);
         if (options.css) console.log(`   CSS:    ${path.resolve(options.css)}`);
 
@@ -107,6 +109,7 @@ program
             header: options.header,
             footer: options.footer,
             pageNumbers: options.pageNumbers,
+            watermark: options.watermark,
             cssFile: options.css,
             keepHtml: options.keepHtml,
             mermaid: options.mermaid,

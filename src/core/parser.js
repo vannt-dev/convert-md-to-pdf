@@ -100,6 +100,7 @@ function parseMarkdownToHtml(rawMarkdownContent, options = {}) {
     header: options.header !== undefined ? options.header : frontMatter.header,
     footer: options.footer !== undefined ? options.footer : frontMatter.footer,
     pageNumbers: options.pageNumbers !== undefined ? options.pageNumbers : frontMatter.pageNumbers,
+    watermark: options.watermark !== undefined ? options.watermark : frontMatter.watermark,
     mermaid: options.mermaid !== undefined ? options.mermaid : (frontMatter.mermaid !== false),
     katex: options.katex !== undefined ? options.katex : (frontMatter.katex !== false),
     highlight: options.highlight !== undefined ? options.highlight : (frontMatter.highlight !== false),
@@ -136,7 +137,13 @@ function parseMarkdownToHtml(rawMarkdownContent, options = {}) {
 
   // Page numbers and running header/footer, printed in the page margins
   const pageCss = pageMarksCss(
-    { header: mergedOptions.header, footer: mergedOptions.footer, pageNumbers: mergedOptions.pageNumbers, font: mergedOptions.font },
+    {
+      header: mergedOptions.header,
+      footer: mergedOptions.footer,
+      pageNumbers: mergedOptions.pageNumbers,
+      watermark: mergedOptions.watermark,
+      font: mergedOptions.font
+    },
     { title, author, date }
   );
   if (pageCss) {

@@ -77,7 +77,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Page numbers and running header/footer, printed in the page margins
     if (typeof MdPdfPageMarks !== 'undefined') {
       const pageMarks = MdPdfPageMarks.pageMarksCss(
-        { header: options.header, footer: options.footer, pageNumbers: options.pageNumbers, font: options.font },
+        {
+          header: options.header,
+          footer: options.footer,
+          pageNumbers: options.pageNumbers,
+          watermark: options.watermark,
+          font: options.font
+        },
         { title: document.title }
       );
       // Before the custom CSS, so that it can restyle them.
