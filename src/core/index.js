@@ -47,14 +47,16 @@ function pdfOutline(markdown, options = {}) {
  * format named in `options.format` (`html`, `docx`, `epub`)
  * @param {string} inputPath Path to source .md file
  * @param {string} [outputPath] Path to the target file
- * @param {Object} [options] Conversion options
+ * @param {Object} [options] Conversion options. `options.markdown` gives the Markdown itself
+ *   (e.g. read from stdin); `inputPath` then need not exist and only places relative paths
  * @returns {Promise<{ outputPath: string, htmlPath: string, pdfPath: string, includedFiles: string[] }>}
  *   `outputPath` is the file that was asked for, whatever its format
  */
 async function convertMarkdownToPdf(inputPath, outputPath, options = {}) {
   const absInputPath = resolvePath(inputPath);
 
-  if (!fs.existsSync(absInputPath)) {
+  const fromText = typeof options.markdown === 'string';
+  if (!fromText && !fs.existsSync(absInputPath)) {
     throw new Error(`Input file not found: ${absInputPath}`);
   }
 
@@ -73,7 +75,7 @@ async function convertMarkdownToPdf(inputPath, outputPath, options = {}) {
   }
 
   // Read Markdown, pulling in the files it imports with `@import "path"`
-  let markdownContent = fs.readFileSync(absInputPath, 'utf8');
+  let markdownContent = fromText ? options.markdown : fs.readFileSync(absInputPath, 'utf8');
   let includedFiles = [];
   if (options.include !== false) {
     ({ content: markdownContent, files: includedFiles } = expandIncludes(markdownContent, absInputPath));

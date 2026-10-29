@@ -281,6 +281,177 @@ async function runTests() {
     fs.unlinkSync(out);
   });
 
+  // 7d. Project config file (.mdpdfrc) and Markdown from stdin
+  test('config: .mdpdfrc is found in the folder or a parent, up to the folder that holds .git', () => {
+    const { findConfigFile } = require('../src/cli/config');
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'md-pdf-rc-find-'));
+    const sub = path.join(repo, 'docs', 'guide');
+    fs.mkdirSync(sub, { recursive: true });
+    fs.mkdirSync(path.join(repo, '.git'));
+    assert.strictEqual(findConfigFile(sub), null);
+
+    fs.writeFileSync(path.join(repo, '.mdpdfrc.json'), '{}');
+    assert.strictEqual(findConfigFile(sub), path.join(repo, '.mdpdfrc.json'));
+    fs.writeFileSync(path.join(repo, '.mdpdfrc'), '{}');
+    assert.strictEqual(findConfigFile(sub), path.join(repo, '.mdpdfrc'), '.mdpdfrc comes before .mdpdfrc.json');
+    fs.writeFileSync(path.join(sub, '.mdpdfrc.json'), '{}');
+    assert.strictEqual(findConfigFile(sub), path.join(sub, '.mdpdfrc.json'), 'the nearest file wins');
+
+    // The search stops at the repository root: a file above it is not used.
+    fs.rmSync(path.join(sub, '.mdpdfrc.json'));
+    fs.mkdirSync(path.join(repo, 'docs', '.git'));
+    assert.strictEqual(findConfigFile(sub), null);
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+
+  test('config: loadConfig reads JSON, warns about unknown keys and resolves paths from its folder', () => {
+    const { loadConfig } = require('../src/cli/config');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-pdf-rc-load-'));
+    const file = path.join(dir, '.mdpdfrc');
+    fs.writeFileSync(file, JSON.stringify({ theme: 'dark', toc: true, pageNumbers: 'simple', css: 'style/a.css', output: 'dist', colour: 'red' }));
+    const { config, warnings } = loadConfig(file);
+    assert.deepStrictEqual(config, {
+      theme: 'dark',
+      toc: true,
+      pageNumbers: 'simple',
+      css: path.join(dir, 'style', 'a.css'),
+      output: path.join(dir, 'dist')
+    });
+    assert.strictEqual(warnings.length, 1);
+    assert.ok(warnings[0].includes('unknown key "colour"'));
+
+    fs.writeFileSync(file, '{ "theme": "dark", }');
+    assert.throws(() => loadConfig(file), (err) => err.message.includes(file) && err.message.includes('not valid JSON'));
+    fs.writeFileSync(file, '["dark"]');
+    assert.throws(() => loadConfig(file), /must hold a JSON object/);
+    fs.writeFileSync(file, '{ "toc": "yes" }');
+    assert.throws(() => loadConfig(file), /"toc" must be true or false/);
+    fs.writeFileSync(file, '{ "pageNumbers": "roman" }');
+    assert.throws(() => loadConfig(file), /"pageNumbers" must be/);
+    assert.throws(() => loadConfig(path.join(dir, 'missing.json')), /Config file not found/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('config: flags beat front matter, front matter beats .mdpdfrc', () => {
+    const { layerOptions } = require('../src/cli/config');
+    const rc = { theme: 'dark', watermark: 'RC', landscape: true, css: '/rc.css', format: 'html', toc: true };
+    // Nothing on the command line or in the front matter: the config file decides.
+    assert.deepStrictEqual(layerOptions({}, rc, {}), rc);
+    // The front matter sets the key: it is left to the front matter.
+    const fromFrontMatter = layerOptions({}, rc, { theme: 'academic', orientation: 'portrait', css: 'fm.css', toc: false });
+    assert.strictEqual(fromFrontMatter.theme, undefined);
+    assert.strictEqual(fromFrontMatter.landscape, undefined);
+    assert.strictEqual(fromFrontMatter.css, undefined);
+    assert.strictEqual(fromFrontMatter.toc, undefined);
+    assert.strictEqual(fromFrontMatter.watermark, 'RC');
+    // format is not a front matter key, so the config file still sets it.
+    assert.strictEqual(fromFrontMatter.format, 'html');
+    // A flag wins over both.
+    const flagged = layerOptions({ theme: 'github', watermark: '' }, rc, { theme: 'academic' });
+    assert.strictEqual(flagged.theme, 'github');
+    assert.strictEqual(flagged.watermark, '');
+  });
+
+  test('cli: .mdpdfrc sets defaults; flags and front matter override it; bad JSON exits 1', () => {
+    const { spawnSync } = require('child_process');
+    const cliPath = path.join(__dirname, '..', 'bin', 'cli.js');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-pdf-rc-cli-'));
+    fs.mkdirSync(path.join(dir, '.git'));
+    const cli = (...args) => spawnSync(process.execPath, [cliPath, ...args], { cwd: dir, encoding: 'utf8' });
+    const read = (name) => fs.readFileSync(path.join(dir, name), 'utf8');
+    const DARK = 'color: #e2e8f0; background-color: #0f172a';
+    fs.writeFileSync(path.join(dir, 'plain.md'), '# Plain\n\n## Part\n');
+    fs.writeFileSync(path.join(dir, 'fm.md'), '---\ntheme: academic\nwatermark: FROM-FM\ntoc: false\n---\n# FM\n\n## Part\n');
+    fs.writeFileSync(
+      path.join(dir, '.mdpdfrc'),
+      JSON.stringify({ format: 'html', theme: 'dark', watermark: 'FROM-RC', toc: true, output: 'out', shiny: 1 })
+    );
+
+    const run = cli('plain.md');
+    assert.strictEqual(run.status, 0, run.stderr);
+    assert.ok(run.stderr.includes('unknown key "shiny"'));
+    let html = read('out/plain.html');
+    assert.ok(html.includes(DARK));
+    assert.ok(html.includes('FROM-RC'));
+    assert.ok(html.includes('class="toc'));
+
+    assert.strictEqual(cli('plain.md', '--watermark', 'FROM-FLAG', '-t', 'github').status, 0);
+    html = read('out/plain.html');
+    assert.ok(html.includes('FROM-FLAG') && !html.includes('FROM-RC'));
+    assert.ok(!html.includes(DARK));
+
+    assert.strictEqual(cli('fm.md').status, 0);
+    html = read('out/fm.html');
+    assert.ok(html.includes('FROM-FM') && !html.includes('FROM-RC'));
+    assert.ok(!html.includes(DARK));
+    assert.ok(!html.includes('class="toc'));
+
+    // --no-config: built-in defaults, with front matter still applied.
+    assert.strictEqual(cli('plain.md', '--no-config', '-f', 'html', '-o', 'bare.html').status, 0);
+    html = read('bare.html');
+    assert.ok(!html.includes('FROM-RC') && !html.includes(DARK) && !html.includes('class="toc'));
+
+    // --config names another file.
+    fs.writeFileSync(path.join(dir, 'ci.json'), JSON.stringify({ format: 'html', watermark: 'FROM-CI' }));
+    assert.strictEqual(cli('plain.md', '--config', 'ci.json', '-o', 'ci.html').status, 0);
+    assert.ok(read('ci.html').includes('FROM-CI'));
+    const missing = cli('plain.md', '--config', 'nope.json');
+    assert.strictEqual(missing.status, 1);
+    assert.ok(missing.stderr.includes('Config file not found'));
+
+    fs.writeFileSync(path.join(dir, '.mdpdfrc'), '{ "theme": "dark" ');
+    const broken = cli('plain.md');
+    assert.strictEqual(broken.status, 1);
+    assert.ok(broken.stderr.includes('.mdpdfrc') && broken.stderr.includes('not valid JSON'));
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('cli: front matter theme and toc apply when no flag is given', () => {
+    const { spawnSync } = require('child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-pdf-fm-cli-'));
+    fs.mkdirSync(path.join(dir, '.git'));
+    fs.writeFileSync(path.join(dir, 'a.md'), '---\ntheme: dark\ntoc: true\n---\n# A\n\n## Part\n');
+    const cliPath = path.join(__dirname, '..', 'bin', 'cli.js');
+    const run = spawnSync(process.execPath, [cliPath, 'a.md', '-f', 'html'], { cwd: dir, encoding: 'utf8' });
+    assert.strictEqual(run.status, 0, run.stderr);
+    const html = fs.readFileSync(path.join(dir, 'a.html'), 'utf8');
+    assert.ok(html.includes('color: #e2e8f0; background-color: #0f172a'));
+    assert.ok(html.includes('class="toc'));
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('cli: "-" reads Markdown from stdin, needs -o, and finds pictures from the current folder', () => {
+    const { spawnSync } = require('child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-pdf-stdin-'));
+    fs.mkdirSync(path.join(dir, '.git'));
+    const png = Buffer.alloc(33);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]).copy(png);
+    png.write('IHDR', 12, 'ascii');
+    png.writeUInt32BE(2, 16);
+    png.writeUInt32BE(3, 20);
+    fs.writeFileSync(path.join(dir, 'pic.png'), png);
+    const cliPath = path.join(__dirname, '..', 'bin', 'cli.js');
+    const cli = (input, ...args) => spawnSync(process.execPath, [cliPath, ...args], { cwd: dir, input, encoding: 'utf8' });
+
+    const html = cli('# From stdin\n\nPiped text.\n', '-', '-f', 'html', '-o', 'piped.html');
+    assert.strictEqual(html.status, 0, html.stderr);
+    assert.ok(fs.readFileSync(path.join(dir, 'piped.html'), 'utf8').includes('From stdin'));
+
+    const docx = cli('# Pic\n\n![p](pic.png)\n', '-', '-f', 'docx', '-o', 'piped.docx');
+    assert.strictEqual(docx.status, 0, docx.stderr);
+    assert.ok(fs.readFileSync(path.join(dir, 'piped.docx')).includes(png));
+
+    const noOut = cli('# x\n', '-', '-f', 'html');
+    assert.strictEqual(noOut.status, 1);
+    assert.ok(noOut.stderr.includes('needs -o'));
+    const mixed = cli('# x\n', '-', 'other.md', '-f', 'html', '-o', 'x.html');
+    assert.strictEqual(mixed.status, 1);
+    assert.ok(mixed.stderr.includes('only input'));
+    // No temporary files are left in the folder.
+    assert.deepStrictEqual(fs.readdirSync(dir).filter((f) => /^_temp_|stdin/.test(f)), []);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   // 8. Extension package
   test('extension: every page and script the manifest and pages refer to is tracked by git', () => {
     const { execFileSync } = require('child_process');
