@@ -6,11 +6,15 @@ const path = require('path');
 const fs = require('fs');
 const { convertMarkdownToPdf } = require('../src/core/index');
 const { normalizePageNumbersArgs, parseMarginText } = require('../src/cli/options');
+const { findConfigFile, layerOptions, loadConfig } = require('../src/cli/config');
+const { parseFrontMatter } = require('../src/core/utils');
 const packageJson = require('../package.json');
 
 const OUTPUT_FORMATS = ['pdf', 'html', 'docx', 'epub'];
 // An --output that names a file rather than a folder.
 const OUTPUT_FILE = /\.(pdf|html|docx|epub)$/i;
+// The input name that reads the Markdown from stdin.
+const STDIN = '-';
 
 const program = new Command();
 
@@ -19,7 +23,7 @@ program
   .alias('md2pdf')
   .description('High-quality Markdown to PDF converter CLI with Mermaid, Math, TOC, Custom CSS, and Batch conversion.')
   .version(packageJson.version, '-v, --version', 'Output tool version')
-  .argument('<inputs...>', 'Input Markdown file(s) or wildcard pattern (.md)')
+  .argument('<inputs...>', 'Input Markdown file(s) or wildcard pattern (.md); - reads stdin')
   .option('-o, --output <path>', 'Output file path or destination directory')
   .option('-f, --format <format>', 'Output format: pdf (default), html, docx, epub', 'pdf')
   .option('-w, --watch', 'Watch input file(s) and recompile automatically on changes', false)
@@ -42,14 +46,50 @@ program
   .option('--no-include', 'Leave @import "file" lines as they are instead of inserting the file')
   .option('--no-outline', 'Leave out the PDF bookmarks (outline) made from the headings')
   .option('-b, --browser <path>', 'Custom Chrome/Edge executable path')
-  .action(async (inputArgs, options) => {
+  .option('--config <path>', 'Project config file (default: .mdpdfrc or .mdpdfrc.json here or in a parent)')
+  .option('--no-config', 'Do not read a project config file')
+  .action(async (inputArgs, cliOptions) => {
     try {
+      // Flags typed on the command line; commander's defaults are left out so that the front
+      // matter and the config file can set those options.
+      const flags = {};
+      for (const [key, value] of Object.entries(cliOptions)) {
+        if (program.getOptionValueSource(key) === 'cli') flags[key] = value;
+      }
+      let configFile = null;
+      let config = {};
+      if (cliOptions.config !== false) {
+        configFile = cliOptions.config ? path.resolve(cliOptions.config) : findConfigFile(process.cwd());
+        if (configFile) {
+          const loaded = loadConfig(configFile);
+          config = loaded.config;
+          loaded.warnings.forEach(warning => console.error(`\x1b[33m⚠ Warning:\x1b[0m ${warning}`));
+        }
+      }
+      // Options that do not depend on the front matter: flag, then config file, then default.
+      const options = { format: 'pdf', theme: 'modern', font: 'Inter', pageSize: 'A4', ...layerOptions(flags, config) };
+
+      const fromStdin = inputArgs.includes(STDIN);
+      let stdinMarkdown = null;
+      if (fromStdin) {
+        if (inputArgs.length > 1) throw new Error('"-" (stdin) must be the only input.');
+        if (options.watch) throw new Error('--watch cannot follow stdin; give a file instead of "-".');
+        if (!options.output || !OUTPUT_FILE.test(options.output)) {
+          throw new Error('Reading from stdin ("-") needs -o <file> naming the output, e.g. -o out.pdf');
+        }
+        if (process.stdin.isTTY) {
+          throw new Error('No Markdown on stdin: pipe it in, e.g. cat a.md | md-pdf-studio - -o a.pdf');
+        }
+        stdinMarkdown = await readStdin();
+      }
+
       // Files pulled in with @import, so watch mode can follow them too.
       const importedFiles = new Set();
 
       const runConversion = async () => {
         const startTime = Date.now();
-        const inputFiles = expandInputFiles(inputArgs);
+        // Markdown from stdin is placed in the current folder, so relative paths resolve there.
+        const inputFiles = fromStdin ? [path.join(process.cwd(), 'stdin.md')] : expandInputFiles(inputArgs);
 
         if (inputFiles.length === 0) {
           console.error('\x1b[31m✖ Error:\x1b[0m No valid Markdown files found matching input.');
@@ -62,6 +102,7 @@ program
           throw new Error(`Unknown format "${options.format}". Use one of: ${OUTPUT_FORMATS.join(', ')}`);
         }
         console.log(`\n\x1b[36m🚀 Converting ${inputFiles.length} file(s) to ${targetFormat.toUpperCase()}...\x1b[0m`);
+        if (configFile) console.log(`   Config: ${configFile}`);
         console.log(`   Theme:  ${options.theme}`);
         console.log(`   Font:   ${options.font}`);
         console.log(`   Paper:  ${options.pageSize} (${options.landscape ? 'Landscape' : 'Portrait'})`);
@@ -70,6 +111,7 @@ program
         if (options.watermark) console.log(`   Mark:   Watermark "${options.watermark}"`);
         if (options.pageNumbers) console.log(`   Pages:  Page numbers (${options.pageNumbers === true ? 'full' : options.pageNumbers})`);
         if (options.css) console.log(`   CSS:    ${path.resolve(options.css)}`);
+        console.log('   (a file\'s front matter can change these for that file)');
 
         let targetOutputDir = null;
         if (options.output) {
@@ -95,30 +137,35 @@ program
             fileOutPath = options.output;
           }
 
-          console.log(`[\x1b[33m${count + 1}/${inputFiles.length}\x1b[0m] Processing: ${file}`);
+          console.log(`[\x1b[33m${count + 1}/${inputFiles.length}\x1b[0m] Processing: ${fromStdin ? '(stdin)' : file}`);
 
+          // Flags > this file's front matter > config file > built-in defaults. A key left
+          // undefined here is decided by the front matter, then by the defaults in src/core.
+          const markdown = fromStdin ? stdinMarkdown : fs.readFileSync(file, 'utf8');
+          const fileOptions = layerOptions(flags, config, parseFrontMatter(markdown).data);
+          const landscape = fileOptions.landscape;
           const result = await convertMarkdownToPdf(file, fileOutPath, {
             format: targetFormat,
-            theme: options.theme,
-            font: options.font,
-            pageSize: options.pageSize,
-            orientation: options.landscape ? 'landscape' : 'portrait',
-            margin: options.margin,
-            toc: options.toc,
-            cover: options.cover,
-            header: options.header,
-            footer: options.footer,
-            pageNumbers: options.pageNumbers,
-            watermark: options.watermark,
-            cssFile: options.css,
-            keepHtml: options.keepHtml,
-            mermaid: options.mermaid,
-            katex: options.katex,
-            highlight: options.highlight,
-            include: options.include,
-            // Only an explicit --no-outline overrides `outline:` in the front matter.
-            outline: options.outline === false ? false : undefined,
-            executablePath: options.browser
+            markdown,
+            theme: fileOptions.theme,
+            font: fileOptions.font,
+            pageSize: fileOptions.pageSize,
+            orientation: landscape === undefined ? undefined : landscape ? 'landscape' : 'portrait',
+            margin: fileOptions.margin,
+            toc: fileOptions.toc,
+            cover: fileOptions.cover,
+            header: fileOptions.header,
+            footer: fileOptions.footer,
+            pageNumbers: fileOptions.pageNumbers,
+            watermark: fileOptions.watermark,
+            cssFile: fileOptions.css,
+            keepHtml: fileOptions.keepHtml,
+            mermaid: fileOptions.mermaid,
+            katex: fileOptions.katex,
+            highlight: fileOptions.highlight,
+            include: fileOptions.include,
+            outline: fileOptions.outline,
+            executablePath: fileOptions.browser
           });
 
           result.includedFiles.forEach(includedFile => importedFiles.add(includedFile));
@@ -183,6 +230,16 @@ program
       process.exit(1);
     }
   });
+
+/**
+ * Everything piped to stdin, as text.
+ * @returns {Promise<string>}
+ */
+async function readStdin() {
+  const chunks = [];
+  for await (const chunk of process.stdin) chunks.push(chunk);
+  return Buffer.concat(chunks).toString('utf8').replace(/^\uFEFF/, '');
+}
 
 function expandInputFiles(args) {
   const filesSet = new Set();

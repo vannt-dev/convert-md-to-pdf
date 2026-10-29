@@ -1,6 +1,6 @@
 # 📄 convert-md-to-pdf
 
-> Repeatable document builds from Markdown: one command turns the `.md` files in a repo into **PDF**, **Word (`.docx`)**, **EPUB** or **static HTML**, on your own machine or in a CI job. Theme, cover page, table of contents, page numbers, running header/footer and watermark are set in each file's YAML front matter or on the command line, so every build of a document uses the same settings, and any error ends the run with exit code 1 so the job fails. PDF uses an installed Chrome, Edge or Chromium (or the one given with `--browser`); HTML, Word and EPUB need no browser.
+> Repeatable document builds from Markdown: one command turns the `.md` files in a repo into **PDF**, **Word (`.docx`)**, **EPUB** or **static HTML**, on your own machine or in a CI job. Theme, cover page, table of contents, page numbers, running header/footer and watermark are set in a project `.mdpdfrc` file, in each file's YAML front matter or on the command line, so every build of a document uses the same settings, and any error ends the run with exit code 1 so the job fails. PDF uses an installed Chrome, Edge or Chromium (or the one given with `--browser`); HTML, Word and EPUB need no browser.
 
 The second way in is a **Browser Extension (Manifest V3)**: drop `.md` files into the popup, paste text, or convert the page you are on, then save it as PDF or static HTML. Both share the 7 preset themes and the open-source fonts, and both render **Mermaid diagrams**, **LaTeX math**, **GitHub callout alerts** and **custom CSS**.
 
@@ -101,7 +101,12 @@ npx md-pdf-studio report.md -f docx --cover --toc
 
 # EPUB e-book, one chapter per top-level heading
 npx md-pdf-studio book.md -f epub -o book.epub
+
+# Markdown from stdin ("-"): the output file must be named with -o
+cat notes.md | npx md-pdf-studio - -o notes.pdf
 ```
+
+With `-` as the input, the Markdown is read from stdin. It has no file name, so `-o <file>` must name the output file, and `-` must be the only input (no `--watch`). Relative paths in it (pictures, `@import`) are resolved from the current folder, as if the Markdown were a file there.
 
 A book kept as one file per chapter is one document with includes:
 
@@ -147,12 +152,37 @@ toc: true
 | `--no-highlight` | | Disable syntax highlighting of code blocks | `false` |
 | `--no-include` | | Leave `@import "file"` lines as they are instead of inserting the file | `false` |
 | `--no-outline` | | Leave out the PDF bookmarks (outline) made from the headings | `false` |
+| `-b, --browser <path>` | | Chrome, Edge or Chromium executable to print the PDF with | Found automatically |
+| `--config <path>` | | Project config file to read (see below) | `.mdpdfrc` or `.mdpdfrc.json`, if found |
+| `--no-config` | | Read no project config file | |
+
+### Project config (`.mdpdfrc`)
+
+A repo can keep its build settings in a `.mdpdfrc` (or `.mdpdfrc.json`) file, so every run, on a laptop or in CI, uses the same ones without repeating the flags. The file is plain JSON; its keys are the long option names in camelCase:
+
+```json
+{
+  "format": "pdf",
+  "output": "dist",
+  "theme": "github",
+  "toc": true,
+  "pageNumbers": "simple",
+  "footer": "{title}",
+  "watermark": "DRAFT"
+}
+```
+
+Keys: `output`, `format`, `theme`, `font`, `cover`, `pageSize`, `landscape`, `margin`, `toc`, `pageNumbers`, `header`, `footer`, `watermark`, `css`, `keepHtml`, `mermaid`, `katex`, `highlight`, `include`, `outline`, `browser`. Paths (`output`, `css`, `browser`) are relative to the config file's folder.
+
+- **Where it is found:** in the current folder, else in the nearest parent folder, stopping at the repository root (the folder that holds `.git`). In one folder `.mdpdfrc` is used before `.mdpdfrc.json`. `--config <path>` reads another file instead; `--no-config` reads none.
+- **Which setting wins:** command-line flags, then the file's front matter, then `.mdpdfrc`, then the built-in defaults. So `.mdpdfrc` sets the repo's defaults, one document can change them in its front matter, and a flag changes them for one run.
+- **Mistakes:** an unknown key is ignored with a warning. A file that is not valid JSON, or a value of the wrong kind (`"toc": "yes"`), stops the run with exit code 1.
 
 ---
 
 ## 📄 Front Matter Options
 
-You can specify conversion settings directly inside your `.md` files using YAML Front Matter:
+You can specify conversion settings directly inside your `.md` files using YAML Front Matter. A flag given on the command line wins over the front matter, and the front matter wins over `.mdpdfrc` (see [Project config](#project-config-mdpdfrc)):
 
 ```yaml
 ---
@@ -216,6 +246,7 @@ convert-md-to-pdf/
 ├── bin/
 │   └── cli.js               # CLI executable with watch & format options
 ├── src/
+│   ├── cli/                 # Command line helpers: option checks, .mdpdfrc config file
 │   ├── core/                # Shared modular conversion engine
 │   │   ├── themes/          # Modular Theme CSS collection
 │   │   │   ├── index.js     # Theme registry & font override builder
