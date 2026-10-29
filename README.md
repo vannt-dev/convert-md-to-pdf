@@ -1,6 +1,8 @@
 # 📄 convert-md-to-pdf
 
-> A powerful CLI tool and **Browser Extension (Manifest V3)** to convert Markdown (`.md`) files, raw text, or web pages into beautifully styled, high-quality PDF & static HTML documents. Built with support for **Cover Pages**, **Dotted Leader Line Table of Contents (TOC)**, **Mermaid.js diagrams**, **LaTeX Math**, **GitHub Callout Alerts**, **Custom CSS Injection**, **7 Preset Themes**, and **Open-Source Font Selection**.
+> Repeatable document builds from Markdown: one command turns the `.md` files in a repo into **PDF**, **Word (`.docx`)**, **EPUB** or **static HTML**, on your own machine or in a CI job. Theme, cover page, table of contents, page numbers, running header/footer and watermark are set in each file's YAML front matter or on the command line, so every build of a document uses the same settings, and any error ends the run with exit code 1 so the job fails. PDF uses an installed Chrome, Edge or Chromium (or the one given with `--browser`); HTML, Word and EPUB need no browser.
+
+The second way in is a **Browser Extension (Manifest V3)**: drop `.md` files into the popup, paste text, or convert the page you are on, then save it as PDF or static HTML. Both share the 7 preset themes and the open-source fonts, and both render **Mermaid diagrams**, **LaTeX math**, **GitHub callout alerts** and **custom CSS**.
 
 [![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-Install_Extension-4285F4?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/markdown-to-pdf-converter/djikikejkmkklfeklfmddaadilhahamj)
 [![Chrome Web Store users](https://img.shields.io/chrome-web-store/users/djikikejkmkklfeklfmddaadilhahamj?label=Chrome%20users)](https://chromewebstore.google.com/detail/markdown-to-pdf-converter/djikikejkmkklfeklfmddaadilhahamj)
