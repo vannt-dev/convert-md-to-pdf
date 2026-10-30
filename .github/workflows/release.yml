@@ -35,16 +35,17 @@ jobs:
 
       # Build from the tag, not from the branch a manual run was started on
       - name: Checkout Tag
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.tag.outputs.tag }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
-          cache: 'npm'
+          package-manager-cache: false
 
       - name: Check Versions
         env:
@@ -72,17 +73,17 @@ jobs:
         run: echo "path=$(ls dist/extension-v*.zip)" >> "$GITHUB_OUTPUT"
 
       - name: Check the Store ZIP for remotely hosted code
-        uses: vannt-dev/mv3-remote-code-check@v0
+        uses: vannt-dev/mv3-remote-code-check@9e84b492001753fcc2c640c4b7b8ff4445bf0866 # v0.5.0
         with:
           path: ${{ steps.zip.outputs.path }}
 
       - name: Attest Extension Artifacts
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/extension-*.zip
 
       - name: Create or Update GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: 🎉 Release ${{ steps.tag.outputs.tag }}
@@ -107,17 +108,18 @@ jobs:
 
     steps:
       - name: Checkout Tag
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release.outputs.tag }}
+          persist-credentials: false
 
       # Trusted publishing needs npm 11.5 or newer, which ships with Node 24
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
           registry-url: https://registry.npmjs.org
-          cache: 'npm'
+          package-manager-cache: false
 
       - name: Check npm
         run: |
