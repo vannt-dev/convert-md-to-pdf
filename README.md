@@ -12,6 +12,11 @@ The second way in is a **Browser Extension (Manifest V3)**: drop `.md` files int
 ![License](https://img.shields.io/badge/license-MIT-green)
 [![Official vannt-dev build](https://vannt-dev.github.io/badges/official.svg)](https://vannt-dev.github.io/official.html)
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/vannt-dev/convert-md-to-pdf/main/docs/diagrams/overview-dark.svg">
+  <img alt="The md-pdf-studio CLI reads Markdown files or stdin with the settings of .mdpdfrc, the front matter and the command-line flags, and writes a PDF printed by Chrome, Edge or Chromium, or static HTML, Word or EPUB without a browser, ending with exit code 1 on any error; the browser extension takes .md files, pasted text or the current page from its popup or context menu into a print preview and saves a PDF or static HTML." src="https://raw.githubusercontent.com/vannt-dev/convert-md-to-pdf/main/docs/diagrams/overview-light.svg">
+</picture>
+
 ---
 
 Official builds are listed at [vannt-dev.github.io/official.html](https://vannt-dev.github.io/official.html);

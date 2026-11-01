@@ -1,0 +1,27 @@
+%% Re-render the SVGs after editing: npm run diagrams
+flowchart TB
+  subgraph cliflow ["CLI: on your machine or in a CI job"]
+    direction LR
+    md["Markdown files<br/>or stdin"]
+    settings[".mdpdfrc, front matter,<br/>command-line flags"]
+    cli(["md-pdf-studio CLI<br/>md2pdf"])
+    pdf["PDF<br/>printed by Chrome,<br/>Edge or Chromium"]
+    other["Static HTML,<br/>Word .docx, EPUB<br/>no browser"]
+    exit["Exit code 1<br/>on any error"]
+    md --> cli
+    settings --> cli
+    cli --> pdf
+    cli --> other
+    cli -.-> exit
+  end
+
+  subgraph extflow ["Browser extension (Manifest V3)"]
+    direction LR
+    extin[".md files, pasted text<br/>or the current page"]
+    ext(["Popup or<br/>context menu"])
+    preview["Print preview<br/>theme, font, TOC"]
+    extout["PDF or static HTML"]
+    extin --> ext --> preview --> extout
+  end
+
+  cliflow ~~~ extflow
