@@ -20,7 +20,8 @@
     "check:commit": "node scripts/check-commit.js",
     "release": "node scripts/release.js",
     "test": "node tests/index.test.js",
-    "test:sample": "node bin/cli.js examples/sample.md --toc -c examples/custom.css -o output_test.pdf"
+    "test:sample": "node bin/cli.js examples/sample.md --toc -c examples/custom.css -o output_test.pdf",
+    "diagrams": "npx -y @mermaid-js/mermaid-cli@latest -i docs/diagrams/overview.mmd -c docs/diagrams/mermaid.config.json -b transparent -t default -o docs/diagrams/overview-light.svg && npx -y @mermaid-js/mermaid-cli@latest -i docs/diagrams/overview.mmd -c docs/diagrams/mermaid.config.json -b transparent -t dark -o docs/diagrams/overview-dark.svg"
   },
   "keywords": [
     "markdown",
