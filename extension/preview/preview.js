@@ -102,21 +102,14 @@ document.addEventListener('DOMContentLoaded', () => {
       headingsMap = tocResult.headingsMap;
     }
 
-    // Configure marked renderer
+    // Configure marked the way the CLI does (src/core/parser.js); both use the same marked version.
+    marked.setOptions({ gfm: true, breaks: true });
     const renderer = new marked.Renderer();
     const originalCodeRenderer = renderer.code.bind(renderer);
 
-    renderer.code = function(codeArg, infostringArg, escapedArg) {
-      let text = '';
-      let lang = '';
-
-      if (typeof codeArg === 'object' && codeArg !== null) {
-        text = codeArg.text || '';
-        lang = codeArg.lang || '';
-      } else {
-        text = codeArg || '';
-        lang = infostringArg || '';
-      }
+    renderer.code = function(token) {
+      const text = token.text || '';
+      const lang = token.lang || '';
 
       if (lang === 'mermaid' && options.mermaid !== false) {
         return `<div class="mermaid-container"><pre class="mermaid">${escapeHtml(text)}</pre></div>`;
@@ -133,13 +126,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return `<pre><code class="hljs language-${escapeHtml(language)}">${highlighted}</code></pre>\n`;
       }
 
-      return originalCodeRenderer.call(this, codeArg, infostringArg, escapedArg);
+      return originalCodeRenderer.call(this, token);
     };
 
-    renderer.heading = function(text, level, raw, slugger) {
-      const rawClean = raw ? raw.trim() : text;
-      const slug = headingsMap.get(rawClean) || (slugger ? slugger.slug(raw) : `heading-${level}`);
-      return `<h${level} id="${slug}">${text}</h${level}>`;
+    renderer.heading = function({ tokens, depth, text }) {
+      const slug = headingsMap.get(text.trim()) || `heading-${depth}`;
+      return `<h${depth} id="${slug}">${this.parser.parseInline(tokens)}</h${depth}>`;
     };
 
     marked.use({ renderer });

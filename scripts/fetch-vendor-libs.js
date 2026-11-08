@@ -7,13 +7,16 @@ if (!fs.existsSync(libDir)) {
   fs.mkdirSync(libDir, { recursive: true });
 }
 
-// Copy marked.min.js from node_modules if present
-const markedSrc = path.join(__dirname, '..', 'node_modules', 'marked', 'marked.min.js');
+// The extension ships the browser build of the marked the CLI uses, copied from node_modules
+// (marked 16 moved it from marked.min.js to lib/marked.umd.js). A test checks the two match.
+const markedSrc = path.join(__dirname, '..', 'node_modules', 'marked', 'lib', 'marked.umd.js');
 const markedDest = path.join(libDir, 'marked.min.js');
-if (fs.existsSync(markedSrc)) {
-  fs.copyFileSync(markedSrc, markedDest);
-  console.log('✔ Synced marked.min.js');
+if (!fs.existsSync(markedSrc)) {
+  console.error(`✖ ${path.relative(process.cwd(), markedSrc)} not found: run npm install first`);
+  process.exit(1);
 }
+fs.copyFileSync(markedSrc, markedDest);
+console.log(`✔ Synced marked.min.js (marked v${require('marked/package.json').version})`);
 
 function downloadFile(url, destPath) {
   return new Promise((resolve, reject) => {
