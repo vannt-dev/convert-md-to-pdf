@@ -73,7 +73,7 @@ jobs:
         run: echo "path=$(ls dist/extension-v*.zip)" >> "$GITHUB_OUTPUT"
 
       - name: Check the Store ZIP for remotely hosted code
-        uses: vannt-dev/mv3-remote-code-check@9e84b492001753fcc2c640c4b7b8ff4445bf0866 # v0.5.0
+        uses: vannt-dev/mv3-remote-code-check@f066757b2c013f4bac44be401727e6742bf4ce64 # v0.6.0
         with:
           path: ${{ steps.zip.outputs.path }}
 
@@ -83,7 +83,7 @@ jobs:
           subject-path: dist/extension-*.zip
 
       - name: Create or Update GitHub Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: 🎉 Release ${{ steps.tag.outputs.tag }}
