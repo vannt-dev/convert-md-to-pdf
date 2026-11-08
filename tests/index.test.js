@@ -549,6 +549,18 @@ async function runTests() {
     assert.ok(!parseMarkdownToHtml('# Plain\n\nText.').includes('body::after'));
   });
 
+  test('extension: ships the browser build of the marked version the CLI uses', () => {
+    const root = path.join(__dirname, '..');
+    const installed = require('marked/package.json').version;
+    const shipped = fs.readFileSync(path.join(root, 'extension/lib/marked.min.js'), 'utf8');
+    const shippedVersion = (shipped.match(/marked v(\d+\.\d+\.\d+)/) || [])[1];
+    assert.strictEqual(shippedVersion, installed, 'run `npm run fetch:libs` after updating marked');
+    assert.ok(
+      shipped === fs.readFileSync(path.join(root, 'node_modules/marked/lib/marked.umd.js'), 'utf8'),
+      'extension/lib/marked.min.js must be a copy of node_modules/marked/lib/marked.umd.js'
+    );
+  });
+
   test('extension: ships the same page number code as the CLI and prints no fixed footer', () => {
     const root = path.join(__dirname, '..');
     assert.strictEqual(
