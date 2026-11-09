@@ -12,6 +12,7 @@
   <!-- Local Vendor Scripts -->
   <link rel="stylesheet" href="../lib/katex.min.css">
   <script src="../lib/katex.min.js"></script>
+  <script src="../lib/math.js"></script>
   <script src="../lib/marked.min.js"></script>
   <script src="../lib/footnotes.js"></script>
   <script src="../lib/pagemarks.js"></script>
@@ -117,10 +118,14 @@
     }
 
     /* Main document container */
+    /* :where() so a theme's own #document-container background wins (dark, ebook, cyberpunk) */
+    :where(#document-container) {
+      background: #ffffff;
+    }
+
     #document-container {
       max-width: 900px;
       margin: 20px auto;
-      background: #ffffff;
       padding: 30px;
       border-radius: 8px;
       box-shadow: 0 4px 20px rgba(0,0,0,0.08);

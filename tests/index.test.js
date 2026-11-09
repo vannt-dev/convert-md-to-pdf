@@ -561,6 +561,69 @@ async function runTests() {
     );
   });
 
+  test('extension: ships KaTeX (with its fonts), Mermaid and highlight.js copied from node_modules', () => {
+    const root = path.join(__dirname, '..');
+    const same = (shipped, source) => assert.ok(
+      fs.readFileSync(path.join(root, 'extension/lib', shipped)).equals(fs.readFileSync(path.join(root, 'node_modules', source))),
+      `extension/lib/${shipped} must be a copy of node_modules/${source}: run \`npm run fetch:libs\``
+    );
+    same('katex.min.js', 'katex/dist/katex.min.js');
+    same('katex.min.css', 'katex/dist/katex.min.css');
+    same('mermaid.min.js', 'mermaid/dist/mermaid.min.js');
+    same('highlight.min.js', '@highlightjs/cdn-assets/highlight.min.js');
+    const fonts = fs.readdirSync(path.join(root, 'node_modules/katex/dist/fonts')).filter((f) => f.endsWith('.woff2'));
+    assert.ok(fonts.length > 0);
+    fonts.forEach((font) => same(`fonts/${font}`, `katex/dist/fonts/${font}`));
+    // The CSS names every font it may load; each one is shipped.
+    const css = fs.readFileSync(path.join(root, 'extension/lib/katex.min.css'), 'utf8');
+    for (const [, font] of css.matchAll(/url\(fonts\/([^)]+\.woff2)\)/g)) assert.ok(fonts.includes(font), font);
+  });
+
+  test('cli: loads the KaTeX and Mermaid versions the extension ships', () => {
+    const { KATEX_VERSION, MERMAID_VERSION, getHtmlTemplate } = require('../src/core/templates');
+    const dev = require('../package.json').devDependencies;
+    assert.strictEqual(KATEX_VERSION, dev.katex);
+    assert.strictEqual(MERMAID_VERSION, dev.mermaid);
+    assert.strictEqual(require('@highlightjs/cdn-assets/package.json').version, require('highlight.js/package.json').version);
+    const html = getHtmlTemplate({ title: 'T', bodyHtml: '<p>x</p>' });
+    assert.ok(html.includes(`katex@${KATEX_VERSION}/dist/katex.min.js`));
+    assert.ok(html.includes(`mermaid@${MERMAID_VERSION}/dist/mermaid.min.js`));
+    assert.ok(html.includes('MdPdfMath.renderMath(document.body, katex)'));
+    assert.ok(html.includes("look: 'classic'"));
+    const off = getHtmlTemplate({ title: 'T', bodyHtml: '', options: { katex: false, mermaid: false } });
+    assert.ok(!off.includes('katex') && !off.includes('mermaid@'));
+  });
+
+  test('math: $...$ is math, prices and spaced dollars stay text', () => {
+    const { splitMath } = require('../src/core/math');
+    assert.deepStrictEqual(splitMath('Energy $E = mc^2$ here'), [
+      { text: 'Energy ' }, { tex: 'E = mc^2', display: false }, { text: ' here' }
+    ]);
+    assert.deepStrictEqual(splitMath('$$ x^2 $$ after'), [{ tex: 'x^2', display: true }, { text: ' after' }]);
+    for (const plain of ['costs $5 and $10 today', 'a $ b $ c', 'only $5$ here', '$a$5', 'one $ alone', 'no math']) {
+      assert.deepStrictEqual(splitMath(plain), [{ text: plain }], plain);
+    }
+    assert.deepStrictEqual(splitMath('\\$x$ then $y$'), [{ text: '\\$x$ then ' }, { tex: 'y', display: false }]);
+    // The extension ships the same file.
+    const root = path.join(__dirname, '..');
+    assert.strictEqual(
+      fs.readFileSync(path.join(root, 'extension/lib/math.js'), 'utf8'),
+      fs.readFileSync(path.join(root, 'src/core/math.js'), 'utf8')
+    );
+    const page = fs.readFileSync(path.join(root, 'extension/preview/preview.html'), 'utf8');
+    assert.ok(page.includes('<script src="../lib/math.js"></script>'));
+  });
+
+  test('themes: a Mermaid diagram does not get the code block background', () => {
+    const { THEMES } = require('../src/core/themes');
+    const { getThemeStyles } = require('../src/core/themes');
+    for (const theme of Object.keys(THEMES)) {
+      assert.ok(getThemeStyles(theme).includes('pre.mermaid[data-processed] { background: transparent;'), theme);
+    }
+    const preview = fs.readFileSync(path.join(__dirname, '..', 'extension/preview/preview.js'), 'utf8');
+    assert.ok(preview.includes('pre.mermaid[data-processed] { background: transparent;'));
+  });
+
   test('extension: ships the same page number code as the CLI and prints no fixed footer', () => {
     const root = path.join(__dirname, '..');
     assert.strictEqual(

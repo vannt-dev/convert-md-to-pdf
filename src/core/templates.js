@@ -1,5 +1,18 @@
 /*! SPDX-License-Identifier: MIT | Copyright (c) 2026 Van Nguyen | github.com/vannt-dev/convert-md-to-pdf */
+const fs = require('fs');
+const path = require('path');
 const { getThemeStyles } = require('./themes');
+
+// The browser libraries the page loads from the CDN: the versions the extension ships
+// (devDependencies in package.json; a test keeps them the same).
+const KATEX_VERSION = '0.19.1';
+const MERMAID_VERSION = '12.3.0';
+
+// Themes whose diagram box is dark: Mermaid draws with its dark colours there.
+const DARK_DIAGRAM_THEMES = new Set(['dark', 'cyberpunk']);
+
+// Draws the math once KaTeX is loaded; the extension ships the same file as lib/math.js.
+const MATH_SCRIPT = fs.readFileSync(path.join(__dirname, 'math.js'), 'utf8');
 
 /**
  * Escapes special XML characters in title/metadata
@@ -54,20 +67,26 @@ function getHtmlTemplate({ title, author = '', language = 'en', bodyHtml, option
   
   ${enableKatex ? `
   <!-- KaTeX for math rendering -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
-  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="if(typeof renderMathInElement==='function'){renderMathInElement(document.body);}"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@${KATEX_VERSION}/dist/katex.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/katex@${KATEX_VERSION}/dist/katex.min.js"></script>
+  <script>${MATH_SCRIPT}</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      if (typeof katex !== 'undefined') MdPdfMath.renderMath(document.body, katex);
+    });
+  </script>
   ` : ''}
 
   ${enableMermaid ? `
   <!-- Mermaid.js for diagrams -->
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@${MERMAID_VERSION}/dist/mermaid.min.js"></script>
   <script>
     document.addEventListener("DOMContentLoaded", function() {
       if (typeof mermaid !== 'undefined') {
         mermaid.initialize({
           startOnLoad: true,
-          theme: '${theme === 'dark' ? 'dark' : 'base'}',
+          look: 'classic',
+          theme: '${DARK_DIAGRAM_THEMES.has(theme) ? 'dark' : 'base'}',
           securityLevel: 'loose',
           wrap: true,
           useMaxWidth: true,
@@ -196,5 +215,7 @@ function getHtmlTemplate({ title, author = '', language = 'en', bodyHtml, option
 
 module.exports = {
   getHtmlTemplate,
-  getThemeStyles
+  getThemeStyles,
+  KATEX_VERSION,
+  MERMAID_VERSION
 };

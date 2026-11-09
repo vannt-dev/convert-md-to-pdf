@@ -157,37 +157,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Render KaTeX Math if enabled
     if (options.katex !== false && typeof katex !== 'undefined') {
-      renderKaTeXMath(contentEl);
+      MdPdfMath.renderMath(contentEl, katex);
     }
 
     // Render Mermaid Diagrams if enabled
     if (options.mermaid !== false && typeof mermaid !== 'undefined') {
+      // Themes whose diagram box is dark (as in the CLI's src/core/templates.js)
+      const darkDiagrams = options.theme === 'dark' || options.theme === 'cyberpunk';
       try {
         mermaid.initialize({
           startOnLoad: false,
-          theme: options.theme === 'dark' ? 'dark' : 'base',
-          themeVariables: {
+          look: 'classic',
+          theme: darkDiagrams ? 'dark' : 'base',
+          // These colours are for a light diagram box; the dark one brings its own.
+          themeVariables: darkDiagrams ? { fontSize: '13px' } : {
             primaryColor: '#e0f2fe',
             primaryBorderColor: '#0284c7',
             primaryTextColor: '#0f172a',
             lineColor: '#0284c7',
             textColor: '#1e293b',
-            actorBkg: '#1e293b',
-            actorTextColor: '#ffffff',
+            actorBkg: '#e0f2fe',
+            actorBorder: '#0284c7',
+            actorTextColor: '#0f172a',
             fontSize: '13px'
           },
+          // The same spacing as the CLI (src/core/templates.js)
           sequence: {
-            diagramMarginX: 8,
-            diagramMarginY: 8,
-            actorMargin: 10,
-            width: 110,
-            height: 35,
-            boxMargin: 5,
-            boxTextMargin: 4,
-            noteMargin: 6,
-            messageMargin: 8,
             useMaxWidth: true,
-            wrap: true
+            wrap: true,
+            boxMargin: 10,
+            noteMargin: 10,
+            messageMargin: 35
           }
         });
         mermaid.run({ nodes: contentEl.querySelectorAll('.mermaid') });
@@ -281,26 +281,6 @@ document.addEventListener('DOMContentLoaded', () => {
       .replace(/'/g, "&#039;");
   }
 
-  function renderKaTeXMath(element) {
-    const nodes = element.querySelectorAll('p, li, td, th, h1, h2, h3, h4');
-    nodes.forEach(node => {
-      if (node.children.length === 0 && node.textContent.includes('$')) {
-        const text = node.textContent;
-        const replaced = text.replace(/\$([^\$\s](?:[^\$]*[^\$\s])?)\$/g, (match, expr) => {
-          if (/^\d+(\.\d+)?$/.test(expr)) return match;
-          try {
-            return katex.renderToString(expr, { throwOnError: false });
-          } catch (e) {
-            return match;
-          }
-        });
-        if (replaced !== text) {
-          node.innerHTML = replaced;
-        }
-      }
-    });
-  }
-
   function getThemeStyles(theme, pageSize, customCss = '', font = '') {
     const pageCss = `@page { size: ${pageSize} portrait; margin: 14mm 12mm 16mm 12mm; }`;
     let fontOverride = '';
@@ -359,7 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
         .ui-mockup { background-color: #1e1e2e; color: #a6adc8; border: 1px solid #313244; border-left: 4px solid #89b4fa; }
         .mermaid-container { display: block; text-align: center; margin: 14px 0; background: #1e293b; padding: 12px; border-radius: 6px; overflow-x: auto; break-inside: avoid-page; }
         .mermaid { display: block; text-align: center; width: 100%; }
-        .mermaid svg { max-width: 100% !important; height: auto !important; margin: 0 auto; display: inline-block; }
+        .mermaid svg { height: auto !important; margin: 0 auto; display: inline-block; }
       `;
     } else if (theme === 'academic') {
       styles = `
@@ -377,7 +357,7 @@ document.addEventListener('DOMContentLoaded', () => {
         .formula-box { background: #f9fafb; border: 1px solid #d1d5db; padding: 8px 14px; text-align: center; font-style: italic; }
         .mermaid-container { display: block; text-align: center; margin: 14px 0; background: #ffffff; padding: 8px; border: 1px solid #e5e7eb; overflow-x: auto; break-inside: avoid-page; }
         .mermaid { display: block; text-align: center; width: 100%; }
-        .mermaid svg { max-width: 100% !important; height: auto !important; margin: 0 auto; display: inline-block; }
+        .mermaid svg { height: auto !important; margin: 0 auto; display: inline-block; }
       `;
     } else if (theme === 'github') {
       styles = `
@@ -396,7 +376,7 @@ document.addEventListener('DOMContentLoaded', () => {
         .formula-box { background: #f6f8fa; border: 1px solid #d0d7de; padding: 10px; text-align: center; border-radius: 6px; }
         .mermaid-container { display: block; text-align: center; margin: 14px 0; background: #ffffff; padding: 8px; border: 1px solid #d0d7de; border-radius: 6px; overflow-x: auto; break-inside: avoid-page; }
         .mermaid { display: block; text-align: center; width: 100%; }
-        .mermaid svg { max-width: 100% !important; height: auto !important; margin: 0 auto; display: inline-block; }
+        .mermaid svg { height: auto !important; margin: 0 auto; display: inline-block; }
       `;
     } else if (theme === 'ebook') {
       styles = `
@@ -415,7 +395,7 @@ document.addEventListener('DOMContentLoaded', () => {
         .formula-box { background: #ebf8ff; border: 1px solid #bee3f8; padding: 10px; text-align: center; color: #2b6cb0; border-radius: 6px; }
         .mermaid-container { display: block; text-align: center; margin: 14px 0; background: #ffffff; padding: 10px; border: 1px solid #e2e8f0; border-radius: 6px; overflow-x: auto; break-inside: avoid-page; }
         .mermaid { display: block; text-align: center; width: 100%; }
-        .mermaid svg { max-width: 100% !important; height: auto !important; margin: 0 auto; display: inline-block; }
+        .mermaid svg { height: auto !important; margin: 0 auto; display: inline-block; }
       `;
     } else if (theme === 'cyberpunk') {
       styles = `
@@ -435,7 +415,7 @@ document.addEventListener('DOMContentLoaded', () => {
         .formula-box { background: #161b22; border: 1px solid #00f0ff; padding: 10px; text-align: center; color: #00f0ff; }
         .mermaid-container { display: block; text-align: center; margin: 14px 0; background: #161b22; padding: 10px; border: 1px solid #ff007f; border-radius: 4px; overflow-x: auto; break-inside: avoid-page; }
         .mermaid { display: block; text-align: center; width: 100%; }
-        .mermaid svg { max-width: 100% !important; height: auto !important; margin: 0 auto; display: inline-block; }
+        .mermaid svg { height: auto !important; margin: 0 auto; display: inline-block; }
       `;
     } else if (theme === 'minimal') {
       styles = `
@@ -453,7 +433,7 @@ document.addEventListener('DOMContentLoaded', () => {
         .formula-box { border: 1px solid #000; padding: 8px; text-align: center; margin: 10px 0; }
         .mermaid-container { display: block; text-align: center; margin: 12px 0; border: 1px solid #ccc; padding: 8px; overflow-x: auto; break-inside: avoid-page; }
         .mermaid { display: block; text-align: center; width: 100%; }
-        .mermaid svg { max-width: 100% !important; height: auto !important; margin: 0 auto; display: inline-block; }
+        .mermaid svg { height: auto !important; margin: 0 auto; display: inline-block; }
       `;
     } else {
       styles = `
@@ -463,7 +443,7 @@ document.addEventListener('DOMContentLoaded', () => {
         h3 { font-size: 14.5px; font-weight: 600; color: #1e40af; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; break-after: avoid-page; }
         h4 { font-size: 13.5px; font-weight: 600; color: #334155; break-after: avoid-page; }
         .formula-box { background: #f0f9ff; border: 1px solid #bae6fd; border-left: 4px solid #0284c7; padding: 10px 16px; border-radius: 4px; margin: 12px 0; font-size: 13.5px; color: #0369a1; text-align: center; }
-        .formula-box span { font-weight: 500; background: #ffffff; padding: 2px 8px; border-radius: 3px; border: 1px solid #e0f2fe; }
+        .formula-box > span { font-weight: 500; background: #ffffff; padding: 2px 8px; border-radius: 3px; border: 1px solid #e0f2fe; }
         blockquote { margin: 12px 0; padding: 10px 16px; background-color: #f8fafc; border-left: 4px solid #3b82f6; border-radius: 4px; color: #334155; }
         table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; }
         tr { break-inside: avoid-page; }
@@ -478,7 +458,7 @@ document.addEventListener('DOMContentLoaded', () => {
         .ui-mockup code { color: #cdd6f4; }
         .mermaid-container { display: block; text-align: center; margin: 14px 0; background-color: #ffffff; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px; overflow-x: auto; break-inside: avoid-page; }
         .mermaid { display: block; text-align: center; width: 100%; }
-        .mermaid svg { max-width: 100% !important; height: auto !important; margin: 0 auto; display: inline-block; }
+        .mermaid svg { height: auto !important; margin: 0 auto; display: inline-block; }
       `;
     }
 
@@ -522,6 +502,9 @@ document.addEventListener('DOMContentLoaded', () => {
       .footnotes li { margin: 3px 0; }
     `;
 
-    return pageCss + '\n' + coverCss + '\n' + fontOverride + styles + tokenCss + footnoteCss + '\n' + tocCss + '\n' + customCss;
+    // Diagrams are drawn inside <pre class="mermaid">: keep the code-block look off them.
+    const mermaidResetCss = '\npre.mermaid[data-processed] { background: transparent; color: inherit; padding: 0; border: 0; border-radius: 0; margin: 0; white-space: normal; }\n';
+
+    return pageCss + '\n' + coverCss + '\n' + fontOverride + styles + tokenCss + mermaidResetCss + footnoteCss + '\n' + tocCss + '\n' + customCss;
   }
 });

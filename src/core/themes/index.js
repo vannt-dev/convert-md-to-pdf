@@ -38,6 +38,11 @@ function getFontOverrideCss(font) {
   return `body { font-family: '${font}', sans-serif !important; }\n`;
 }
 
+// Diagrams are drawn inside <pre class="mermaid">: keep the code-block look off them.
+const MERMAID_RESET_CSS = `
+pre.mermaid[data-processed] { background: transparent; color: inherit; padding: 0; border: 0; border-radius: 0; margin: 0; white-space: normal; }
+`;
+
 /**
  * Returns complete CSS theme string with cover page and font override
  * @param {string} theme Name of theme
@@ -50,7 +55,7 @@ function getThemeStyles(theme, font = '') {
   const tokenCss = DARK_CODE_THEMES.has(themeName) ? highlightCss.dark : highlightCss.light;
   const fontOverrideCss = getFontOverrideCss(font);
 
-  return `${coverCss}\n${fontOverrideCss}${themeCss}${tokenCss}`;
+  return `${coverCss}\n${fontOverrideCss}${themeCss}${tokenCss}${MERMAID_RESET_CSS}`;
 }
 
 module.exports = {
