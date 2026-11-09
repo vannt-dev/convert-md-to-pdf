@@ -10,7 +10,7 @@ module.exports = `
   h4 { font-size: 13.5px; font-weight: 600; color: #334155; margin-top: 12px; margin-bottom: 6px; break-after: avoid-page; page-break-after: avoid; }
   .section-group { break-inside: avoid-page; page-break-inside: avoid; }
   .formula-box { background: #f0f9ff; border: 1px solid #bae6fd; border-left: 4px solid #0284c7; padding: 10px 16px; border-radius: 4px; margin: 12px 0; font-size: 13.5px; color: #0369a1; text-align: center; }
-  .formula-box span { font-weight: 500; background: #ffffff; padding: 2px 8px; border-radius: 3px; border: 1px solid #e0f2fe; }
+  .formula-box > span { font-weight: 500; background: #ffffff; padding: 2px 8px; border-radius: 3px; border: 1px solid #e0f2fe; }
   blockquote { margin: 12px 0; padding: 10px 16px; background-color: #f8fafc; border-left: 4px solid #3b82f6; border-radius: 4px; color: #334155; font-size: 12.5px; }
   blockquote p { margin: 4px 0; }
   table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; break-inside: auto; }
@@ -26,7 +26,7 @@ module.exports = `
   .ui-mockup code { color: #cdd6f4; }
   .mermaid-container { display: block; text-align: center; margin: 14px 0; background-color: #ffffff; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px; overflow-x: auto; break-inside: avoid-page; page-break-inside: avoid; }
   .mermaid { display: block; text-align: center; width: 100%; }
-  .mermaid svg { max-width: 100% !important; height: auto !important; margin: 0 auto; display: inline-block; }
+  .mermaid svg { height: auto !important; margin: 0 auto; display: inline-block; }
   hr { border: 0; height: 1px; background: #e2e8f0; margin: 16px 0; }
   ul, ol { padding-left: 20px; margin: 6px 0; }
   li { margin-bottom: 3px; }

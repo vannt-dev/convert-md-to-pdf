@@ -17,5 +17,5 @@ module.exports = `
   .formula-box { background: #ebf8ff; border: 1px solid #bee3f8; padding: 10px; text-align: center; color: #2b6cb0; border-radius: 6px; }
   .mermaid-container { display: block; text-align: center; margin: 14px 0; background: #ffffff; padding: 10px; border: 1px solid #e2e8f0; border-radius: 6px; overflow-x: auto; break-inside: avoid-page; }
   .mermaid { display: block; text-align: center; width: 100%; }
-  .mermaid svg { max-width: 100% !important; height: auto !important; margin: 0 auto; display: inline-block; }
+  .mermaid svg { height: auto !important; margin: 0 auto; display: inline-block; }
 `;
