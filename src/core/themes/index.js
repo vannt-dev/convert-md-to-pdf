@@ -40,7 +40,7 @@ function getFontOverrideCss(font) {
 
 // Diagrams are drawn inside <pre class="mermaid">: keep the code-block look off them.
 const MERMAID_RESET_CSS = `
-pre.mermaid { background: transparent; color: inherit; padding: 0; border: 0; border-radius: 0; margin: 0; white-space: normal; }
+pre.mermaid[data-processed] { background: transparent; color: inherit; padding: 0; border: 0; border-radius: 0; margin: 0; white-space: normal; }
 `;
 
 /**

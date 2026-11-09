@@ -618,10 +618,10 @@ async function runTests() {
     const { THEMES } = require('../src/core/themes');
     const { getThemeStyles } = require('../src/core/themes');
     for (const theme of Object.keys(THEMES)) {
-      assert.ok(getThemeStyles(theme).includes('pre.mermaid { background: transparent;'), theme);
+      assert.ok(getThemeStyles(theme).includes('pre.mermaid[data-processed] { background: transparent;'), theme);
     }
     const preview = fs.readFileSync(path.join(__dirname, '..', 'extension/preview/preview.js'), 'utf8');
-    assert.ok(preview.includes('pre.mermaid { background: transparent;'));
+    assert.ok(preview.includes('pre.mermaid[data-processed] { background: transparent;'));
   });
 
   test('extension: ships the same page number code as the CLI and prints no fixed footer', () => {

@@ -162,13 +162,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Render Mermaid Diagrams if enabled
     if (options.mermaid !== false && typeof mermaid !== 'undefined') {
+      // Themes whose diagram box is dark (as in the CLI's src/core/templates.js)
+      const darkDiagrams = options.theme === 'dark' || options.theme === 'cyberpunk';
       try {
         mermaid.initialize({
           startOnLoad: false,
           look: 'classic',
-          theme: options.theme === 'dark' ? 'dark' : 'base',
-          // These colours are for a light page; the dark theme brings its own.
-          themeVariables: options.theme === 'dark' ? { fontSize: '13px' } : {
+          theme: darkDiagrams ? 'dark' : 'base',
+          // These colours are for a light diagram box; the dark one brings its own.
+          themeVariables: darkDiagrams ? { fontSize: '13px' } : {
             primaryColor: '#e0f2fe',
             primaryBorderColor: '#0284c7',
             primaryTextColor: '#0f172a',
@@ -501,7 +503,7 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
 
     // Diagrams are drawn inside <pre class="mermaid">: keep the code-block look off them.
-    const mermaidResetCss = '\npre.mermaid { background: transparent; color: inherit; padding: 0; border: 0; border-radius: 0; margin: 0; white-space: normal; }\n';
+    const mermaidResetCss = '\npre.mermaid[data-processed] { background: transparent; color: inherit; padding: 0; border: 0; border-radius: 0; margin: 0; white-space: normal; }\n';
 
     return pageCss + '\n' + coverCss + '\n' + fontOverride + styles + tokenCss + mermaidResetCss + footnoteCss + '\n' + tocCss + '\n' + customCss;
   }

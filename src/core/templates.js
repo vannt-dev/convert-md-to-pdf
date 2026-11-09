@@ -8,6 +8,9 @@ const { getThemeStyles } = require('./themes');
 const KATEX_VERSION = '0.19.1';
 const MERMAID_VERSION = '12.3.0';
 
+// Themes whose diagram box is dark: Mermaid draws with its dark colours there.
+const DARK_DIAGRAM_THEMES = new Set(['dark', 'cyberpunk']);
+
 // Draws the math once KaTeX is loaded; the extension ships the same file as lib/math.js.
 const MATH_SCRIPT = fs.readFileSync(path.join(__dirname, 'math.js'), 'utf8');
 
@@ -83,7 +86,7 @@ function getHtmlTemplate({ title, author = '', language = 'en', bodyHtml, option
         mermaid.initialize({
           startOnLoad: true,
           look: 'classic',
-          theme: '${theme === 'dark' ? 'dark' : 'base'}',
+          theme: '${DARK_DIAGRAM_THEMES.has(theme) ? 'dark' : 'base'}',
           securityLevel: 'loose',
           wrap: true,
           useMaxWidth: true,
