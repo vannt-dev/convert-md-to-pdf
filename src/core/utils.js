@@ -12,12 +12,14 @@ const { sanitizeHtml, escapeHtml } = require('./sanitizer');
  * - Transforms pagebreak comments (<!-- pagebreak --> or \pagebreak)
  * - Converts simple LaTeX arrow/math symbols
  * @param {string} mdContent 
+ * @param {{ mathProtected?: boolean }} [options] mathProtected: the formulas were already taken
+ *   out (math.js protectMath), so a `$$` still in the text is code and stays as written
  * @returns {string} Preprocessed markdown string
  */
-function preprocessMarkdown(mdContent = '') {
+function preprocessMarkdown(mdContent = '', options = {}) {
   if (!mdContent) return '';
 
-  return mdContent
+  const processed = mdContent
     // GitHub Callouts / Alerts
     .replace(/^>[ \t]*\[!NOTE\][ \t]*(?:\r?\n>[ \t]?)?/gm, '> **ℹ️ NOTE:** ')
     .replace(/^>[ \t]*\[!TIP\][ \t]*(?:\r?\n>[ \t]?)?/gm, '> **💡 TIP:** ')
@@ -40,8 +42,9 @@ function preprocessMarkdown(mdContent = '') {
     .replace(/\$x = y\$/g, 'x = y')
     // Formula box transformation
     .replace(/\$\$\s*\\text\{([^}]+)\}\s*=\s*\\text\{([^}]+)\}\s*-\s*\\text\{([^}]+)\}\s*\$\$/g, 
-      '<div class="formula-box"><strong>$1</strong> = <span>$2</span> &minus; <span>$3</span></div>')
-    .replace(/\$\$\s*([\s\S]+?)\s*\$\$/g, '<div class="formula-box">$1</div>');
+      '<div class="formula-box"><strong>$1</strong> = <span>$2</span> &minus; <span>$3</span></div>');
+  if (options.mathProtected) return processed;
+  return processed.replace(/\$\$\s*([\s\S]+?)\s*\$\$/g, '<div class="formula-box">$1</div>');
 }
 
 /**

@@ -13,6 +13,7 @@ const {
 const { getHtmlTemplate } = require('./templates');
 const { applyFootnotes } = require('./footnotes');
 const { pageMarksCss } = require('./pagemarks');
+const { protectMath } = require('./math');
 
 /**
  * Builds marked custom renderer for diagrams, UI mockups, and headings
@@ -109,7 +110,10 @@ function parseMarkdownToHtml(rawMarkdownContent, options = {}) {
   };
 
   // 3. Preprocess Markdown (footnotes, LaTeX, pagebreaks, alerts)
-  const processedMd = preprocessMarkdown(applyFootnotes(markdownContent));
+  // The formulas are taken out first, so that neither the preprocessor nor Markdown changes the
+  // TeX; they come back once the HTML is made. Without KaTeX nothing would draw them.
+  const math = mergedOptions.katex ? protectMath(markdownContent) : null;
+  const processedMd = preprocessMarkdown(applyFootnotes(math ? math.text : markdownContent), { mathProtected: !!math });
 
   // 4. Generate TOC & Cover Page
   let tocHtml = '';
@@ -170,6 +174,7 @@ function parseMarkdownToHtml(rawMarkdownContent, options = {}) {
   }
 
   bodyHtml = wrapSectionGroups(bodyHtml);
+  if (math) bodyHtml = math.restore(bodyHtml);
 
   // 8. Generate and return full HTML template
   return getHtmlTemplate({
