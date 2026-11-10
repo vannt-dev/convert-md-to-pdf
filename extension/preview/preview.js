@@ -91,7 +91,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Preprocess footnotes, LaTeX & Symbols
-    const processedMd = preprocessMarkdown(MdPdfFootnotes.applyFootnotes(markdownText));
+    // The formulas are taken out first, so that neither the preprocessor nor Markdown changes
+    // the TeX; they come back once the HTML is made (as in the CLI's src/core/parser.js).
+    const math = options.katex !== false && typeof katex !== 'undefined' ? MdPdfMath.protectMath(markdownText) : null;
+    const processedMd = preprocessMarkdown(MdPdfFootnotes.applyFootnotes(math ? math.text : markdownText), !!math);
 
     // Generate TOC if requested
     let tocHtml = '';
@@ -153,6 +156,8 @@ document.addEventListener('DOMContentLoaded', () => {
       '<div class="section-group"><h3>$1</h3>$2');
     bodyHtml = bodyHtml.replace(/(<\/table>|<\/div>|<\/ul>|<\/ol>)\s*(?=<h[1-4]>|<hr|\$)/g, '$1</div>');
 
+    if (math) bodyHtml = math.restore(bodyHtml);
+
     contentEl.innerHTML = bodyHtml;
 
     // Render KaTeX Math if enabled
@@ -197,9 +202,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function preprocessMarkdown(mdContent) {
+  // mathProtected: the formulas were already taken out, so a `$$` still in the text is code.
+  function preprocessMarkdown(mdContent, mathProtected) {
     if (!mdContent) return '';
-    return mdContent
+    const processed = mdContent
       .replace(/^>[ \t]*\[!NOTE\][ \t]*(?:\r?\n>[ \t]?)?/gm, '> **ℹ️ NOTE:** ')
       .replace(/^>[ \t]*\[!TIP\][ \t]*(?:\r?\n>[ \t]?)?/gm, '> **💡 TIP:** ')
       .replace(/^>[ \t]*\[!WARNING\][ \t]*(?:\r?\n>[ \t]?)?/gm, '> **⚠️ WARNING:** ')
@@ -218,8 +224,9 @@ document.addEventListener('DOMContentLoaded', () => {
       .replace(/\$x < y\$/g, 'x < y')
       .replace(/\$x = y\$/g, 'x = y')
       .replace(/\$\$\s*\\text\{([^}]+)\}\s*=\s*\\text\{([^}]+)\}\s*-\s*\\text\{([^}]+)\}\s*\$\$/g, 
-        '<div class="formula-box"><strong>$1</strong> = <span>$2</span> &minus; <span>$3</span></div>')
-      .replace(/\$\$\s*([\s\S]+?)\s*\$\$/g, '<div class="formula-box">$1</div>');
+        '<div class="formula-box"><strong>$1</strong> = <span>$2</span> &minus; <span>$3</span></div>');
+    if (mathProtected) return processed;
+    return processed.replace(/\$\$\s*([\s\S]+?)\s*\$\$/g, '<div class="formula-box">$1</div>');
   }
 
   function generateToc(mdContent) {

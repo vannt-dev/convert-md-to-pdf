@@ -614,6 +614,136 @@ async function runTests() {
     assert.ok(page.includes('<script src="../lib/math.js"></script>'));
   });
 
+  // What KaTeX is handed for each formula in the page, in order.
+  const texIn = (html) => {
+    const unescape = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+    const found = [];
+    const re = /<span class="math-inline">([\s\S]*?)<\/span>|<div class="formula-box">([\s\S]*?)<\/div>/g;
+    for (let m = re.exec(html); m; m = re.exec(html)) found.push(unescape(m[1] !== undefined ? m[1] : m[2]));
+    return found;
+  };
+  const bodyOf = (md, options) => {
+    const html = parseMarkdownToHtml(md, options);
+    return html.slice(html.indexOf('<body'));
+  };
+
+  test('math: Markdown leaves the TeX inside $...$ alone', () => {
+    const cases = [
+      String.raw`\{x \mid x > 0\}`,
+      String.raw`a\,b`,
+      String.raw`a_1 * b_2 * c`,
+      String.raw`a*b*c`,
+      String.raw`x_i + y_j`,
+      String.raw`a<b`,
+      String.raw`\alpha \rightarrow \beta \longrightarrow \gamma`,
+      String.raw`a \& b \% c \# d`,
+      String.raw`[x](y)`
+    ];
+    for (const tex of cases) {
+      assert.deepStrictEqual(texIn(bodyOf(`Before $${tex}$ after.`)), [tex], tex);
+    }
+    // Two formulas with underscores on one line used to become emphasis.
+    const two = bodyOf(String.raw`So $a_1 + b_1$ and _then_ $c_2*d_2$ and *more*.`);
+    assert.deepStrictEqual(texIn(two), ['a_1 + b_1', 'c_2*d_2']);
+    assert.ok(two.includes('<em>then</em>') && two.includes('<em>more</em>'));
+  });
+
+  test('math: $$...$$ keeps line breaks, braces and comparisons', () => {
+    const tex = String.raw`\begin{aligned}
+a_1 &= b_1 + c_1 \\
+a_2 &= b_2 * c_2 * d \\
+
+S &= \{x \mid x < 1\}
+\end{aligned}`;
+    const block = bodyOf(`Text\n\n$$\n${tex}\n$$\n\nMore`);
+    assert.deepStrictEqual(texIn(block), [tex]);
+    // A formula on lines of its own is not left inside a paragraph.
+    assert.ok(!/<p>\s*<div class="formula-box">/.test(block));
+    const inline = String.raw`a \\ b_1 * c_1 * d`;
+    assert.deepStrictEqual(texIn(bodyOf(`Sum $$${inline}$$ in a sentence`)), [inline]);
+    // The drawn "A = B - C" box is kept.
+    const drawn = bodyOf(String.raw`$$ \text{Profit} = \text{Revenue} - \text{Cost} $$`);
+    assert.ok(drawn.includes('<div class="formula-box"><strong>Profit</strong> = <span>Revenue</span>'));
+  });
+
+  test('math: prices and escaped dollars stay text', () => {
+    const prices = bodyOf('This costs $5 and $10 today, or $ 3 $ there.');
+    assert.deepStrictEqual(texIn(prices), []);
+    assert.ok(prices.includes('This costs $5 and $10 today, or $ 3 $ there.'));
+    const escaped = bodyOf(String.raw`Pay \$x\$ now and \$20 later, then $y_1$.`);
+    assert.deepStrictEqual(texIn(escaped), ['y_1']);
+    // Each escaped dollar is fenced off, so the page's math pass cannot pair two of them.
+    assert.ok(escaped.includes('Pay <span class="math-dollar">$</span>x<span class="math-dollar">$</span> now'));
+    assert.ok(!escaped.includes('\\$'));
+    // A lone dollar does not reach into the next paragraph.
+    assert.deepStrictEqual(texIn(bodyOf('Only $a here.\n\nAnd b$ there.')), []);
+  });
+
+  test('math: code is left as written', () => {
+    const span = bodyOf('Code `$a_1 * b_2$` and ``$x$ ` $y$`` then $z_1$.');
+    assert.deepStrictEqual(texIn(span), ['z_1']);
+    assert.ok(span.includes('<code>$a_1 * b_2$</code>'));
+    assert.ok(span.includes('<code>$x$ ` $y$</code>'));
+    const fenced = bodyOf('```\nconst a = `$x_1$`; // $$y$$\n```\n\n~~~js\nlet b = "$p_1$";\n~~~\n\n- item\n\n  ```\n  $q_1$\n  ```\n');
+    assert.deepStrictEqual(texIn(fenced), []);
+    assert.ok(fenced.includes('const a = `$x_1$`; // $$y$$'));
+    assert.ok(fenced.includes('$q_1$'));
+    const indented = bodyOf('Text\n\n    indented $a_1 * b_2$ and $$c$$ code\n');
+    assert.deepStrictEqual(texIn(indented), []);
+    assert.ok(indented.includes('indented $a_1 * b_2$ and $$c$$ code'));
+    // In an attribute the source text comes back, not markup.
+    const alt = bodyOf('![area $x_1 < y$](a.png)');
+    assert.ok(alt.includes('alt="area $x_1 &lt; y$"'), alt);
+  });
+
+  test('math: works in tables, lists, headings and the table of contents', () => {
+    const table = bodyOf(String.raw`| Name | Formula |
+|------|---------|
+| Set  | $\{a_1, a_2\}$ |
+| Abs  | $|x| * |y|$ |
+`);
+    assert.deepStrictEqual(texIn(table), [String.raw`\{a_1, a_2\}`, '|x| * |y|']);
+    assert.strictEqual((table.match(/<td>/g) || []).length, 4);
+    const list = bodyOf(String.raw`- First $x_1 * x_2 * x_3$
+- Second $\frac{a_1}{b_1}\,dx$
+`);
+    assert.deepStrictEqual(texIn(list), ['x_1 * x_2 * x_3', String.raw`\frac{a_1}{b_1}\,dx`]);
+    assert.strictEqual((list.match(/<li>/g) || []).length, 2);
+    const toc = bodyOf(String.raw`# Title
+
+## Energy $E_0 = m\,c^2$
+
+Text`, { toc: true });
+    assert.deepStrictEqual(texIn(toc), [String.raw`E_0 = m\,c^2`, String.raw`E_0 = m\,c^2`]);
+    assert.ok(!/[]/.test(toc));
+  });
+
+  test('math: with --no-katex the document is handled as before', () => {
+    const off = bodyOf(String.raw`Go $\ge$ and $a_1$.`, { katex: false });
+    assert.ok(off.includes('Go ≥ and $a_1$.'));
+    assert.ok(!off.includes('math-inline'));
+  });
+
+  test('math: protectMath round trip and the extension preview uses it', () => {
+    const { protectMath } = require('../src/core/math');
+    const none = protectMath('No math, costs $5.');
+    assert.strictEqual(none.text, 'No math, costs $5.');
+    assert.strictEqual(none.restore('<p>x</p>'), '<p>x</p>');
+    const kept = protectMath(String.raw`A $a_1$ and $$b \\ c$$ end`);
+    assert.ok(!kept.text.includes('a_1') && !kept.text.includes('\\'));
+    assert.strictEqual(
+      kept.restore(`<p>${kept.text}</p>`),
+      String.raw`<p>A <span class="math-inline">a_1</span> and <div class="formula-box">b \\ c</div> end</p>`
+    );
+    assert.strictEqual(kept.restore(`<pre><code>${kept.text}</code></pre>`), String.raw`<pre><code>A $a_1$ and $$b \\ c$$ end</code></pre>`);
+    // Replacement patterns in the TeX ("$&", "$'") are not expanded.
+    const odd = protectMath("$a$' and $b$& c$");
+    assert.deepStrictEqual(texIn(odd.restore(odd.text)), ['a', 'b']);
+    const preview = fs.readFileSync(path.join(__dirname, '../extension/preview/preview.js'), 'utf8');
+    assert.ok(preview.includes('MdPdfMath.protectMath(') && preview.includes('.restore('));
+  });
+
   test('themes: a Mermaid diagram does not get the code block background', () => {
     const { THEMES } = require('../src/core/themes');
     const { getThemeStyles } = require('../src/core/themes');
@@ -696,7 +826,7 @@ async function runTests() {
       fs.readFileSync(path.join(root, 'src/core/footnotes.js'), 'utf8')
     );
     const preview = fs.readFileSync(path.join(root, 'extension/preview/preview.js'), 'utf8');
-    assert.ok(preview.includes('MdPdfFootnotes.applyFootnotes(markdownText)'));
+    assert.ok(preview.includes('MdPdfFootnotes.applyFootnotes('));
   });
 
   // A throwaway folder of files that import each other.
