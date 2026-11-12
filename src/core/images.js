@@ -1,6 +1,7 @@
 /*! SPDX-License-Identifier: MIT | Copyright (c) 2026 Van Nguyen | github.com/vannt-dev/convert-md-to-pdf */
 const fs = require('fs');
 const path = require('path');
+const { fileURLToPath } = require('url');
 
 /**
  * Local images for the exporters that embed them (DOCX, EPUB).
@@ -43,6 +44,23 @@ function imageSize(data) {
 }
 
 /**
+ * The file a `file:` address names: `file:///home/u/a.png` is `/home/u/a.png`, and
+ * `file:///C:/Users/u/a.png` is `C:\Users\u\a.png`.
+ * @param {string} src
+ * @param {boolean} [windows] Read it as a Windows path; by default, the way this system does
+ * @returns {string | null} null when the address names no file this system can open
+ */
+function fileUrlPath(src, windows = process.platform === 'win32') {
+  // A stray percent sign stands for itself, as it does in a plain file name.
+  const address = String(src).replace(/%(?![0-9a-f]{2})/gi, '%25');
+  try {
+    return fileURLToPath(address, { windows });
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
  * Reads the image a Markdown document refers to.
  * @param {string} src As written in the document
  * @param {string} baseDir Folder of the document
@@ -51,13 +69,19 @@ function imageSize(data) {
  */
 function readLocalImage(src, baseDir) {
   if (!src || /^[a-z][a-z0-9+.-]*:/i.test(src) && !/^file:/i.test(src) && !/^[a-zA-Z]:[\\/]/.test(src)) return null;
-  let relative = src.replace(/^file:\/\/\/?/i, '').split(/[?#]/)[0];
-  try {
-    relative = decodeURIComponent(relative);
-  } catch (_) {
-    // A stray percent sign: the name is used as written.
+  let filePath;
+  if (/^file:/i.test(src)) {
+    filePath = fileUrlPath(src);
+    if (!filePath) return null;
+  } else {
+    let relative = src.split(/[?#]/)[0];
+    try {
+      relative = decodeURIComponent(relative);
+    } catch (_) {
+      // A stray percent sign: the name is used as written.
+    }
+    filePath = path.resolve(baseDir || process.cwd(), relative);
   }
-  const filePath = path.resolve(baseDir || process.cwd(), relative);
   const extension = path.extname(filePath).slice(1).toLowerCase();
   if (!MEDIA_TYPES[extension] || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return null;
   const data = fs.readFileSync(filePath);
@@ -65,6 +89,7 @@ function readLocalImage(src, baseDir) {
 }
 
 module.exports = {
+  fileUrlPath,
   imageSize,
   readLocalImage
 };

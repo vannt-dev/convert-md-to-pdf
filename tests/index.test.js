@@ -18,7 +18,9 @@ const { buildDocument, plainText } = require('../src/core/docmodel');
 const { createZip } = require('../src/core/zip');
 const { markdownToDocx } = require('../src/core/docx');
 const { markdownToEpub } = require('../src/core/epub');
+const { fileUrlPath, readLocalImage } = require('../src/core/images');
 const os = require('os');
+const { pathToFileURL } = require('url');
 
 async function runTests() {
   console.log('\x1b[36m🧪 Running convert-md-to-pdf test suite...\x1b[0m\n');
@@ -1088,6 +1090,32 @@ Text`, { toc: true });
     assert.ok(!looseDocx.includes('<w:hyperlink'));
     assert.ok(read('OEBPS/nav.xhtml').includes('<li><a href="chapter-2.xhtml#two-%C3%A9t%C3%A9">Two été</a></li>'));
     assert.ok(read('OEBPS/toc.ncx').includes('<navPoint id="nav-2" playOrder="2">'));
+  });
+
+  test('images: a file:// address finds the picture on macOS, Linux and Windows alike', () => {
+    // The two forms, read the same way on any system.
+    assert.strictEqual(fileUrlPath('file:///home/u/my%20pic.png', false), '/home/u/my pic.png');
+    assert.strictEqual(fileUrlPath('file://localhost/Users/u/%E1%BA%A3nh.png', false), '/Users/u/ảnh.png');
+    assert.strictEqual(fileUrlPath('file:///C:/Users/u/my%20pic.png', true), 'C:\\Users\\u\\my pic.png');
+    assert.strictEqual(fileUrlPath('file://C:/Users/u/a.png?x=1#y', true), 'C:\\Users\\u\\a.png');
+    assert.strictEqual(fileUrlPath('file:///home/u/100%.png', false), '/home/u/100%.png');
+    assert.strictEqual(fileUrlPath('file:///home/u/a.png', true), null, 'no drive on Windows');
+    assert.strictEqual(fileUrlPath('file://server/share/a.png', false), null, 'no shares outside Windows');
+
+    // A real file, by its absolute address, from a document somewhere else.
+    const picDir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-pdf-file-url-'));
+    const picPath = path.join(picDir, 'my pic.png');
+    fs.writeFileSync(picPath, png);
+    const address = pathToFileURL(picPath).href;
+    assert.ok(address.startsWith(process.platform === 'win32' ? 'file:///' + picDir.slice(0, 2) : 'file:///'));
+    const image = readLocalImage(address, os.homedir());
+    assert.ok(image, `${address} is read`);
+    assert.deepStrictEqual(image.size, { width: 2, height: 3 });
+    const docx = new (require('adm-zip'))(markdownToDocx(`![p](${address})`, { baseDir: os.homedir() }));
+    assert.ok(docx.getEntry('word/media/image1.png'), 'the picture is in the DOCX');
+    const epub = new (require('adm-zip'))(markdownToEpub(`![p](${address})`, { baseDir: os.homedir() }));
+    assert.ok(epub.getEntry('OEBPS/images/image-1.png'), 'the picture is in the EPUB');
+    fs.rmSync(picDir, { recursive: true, force: true });
   });
 
   await asyncTest('core.convertMarkdownToPdf: docx and epub are written without a browser; an unknown format is refused', async () => {
