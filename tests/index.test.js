@@ -1134,6 +1134,205 @@ Text`, { toc: true });
     fs.rmSync(exportDir, { recursive: true, force: true });
   });
 
+  // Broken references (--strict)
+  const { findBrokenReferences, formatProblem, htmlIds } = require('../src/core/references');
+  const strictDir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-pdf-strict-'));
+  fs.mkdirSync(path.join(strictDir, '.git'));
+  fs.mkdirSync(path.join(strictDir, 'docs'));
+  fs.writeFileSync(path.join(strictDir, 'pic.png'), 'png');
+  fs.writeFileSync(path.join(strictDir, 'my pic.png'), 'png');
+  fs.writeFileSync(path.join(strictDir, 'docs', 'a.pdf'), 'pdf');
+  const strictFile = path.join(strictDir, 'doc.md');
+  const brief = (problems) => problems.map(problem => `${problem.kind} ${problem.line} ${problem.reference}`);
+
+  await asyncTest('references: missing pictures, dead local links, unknown anchors and footnotes are found with their lines', async () => {
+    const markdown = [
+      '---',
+      'title: T',
+      '---',
+      '# Intro',
+      '',
+      '![a](pic.png) ![b](missing.png) ![c](my%20pic.png?v=2) ![d](data:image/png;base64,AAAA)',
+      '',
+      '[a](./other.md) [b](docs/a.pdf) [c](docs) [d](docs/a.pdf#page=2) [e](https://example.com/x.md) [f](mailto:a@b.c)',
+      '',
+      '[a](#intro) [b](#nope) [c](#top) [d](#)',
+      '',
+      '> - quoted <img alt="x" src="gone.png"> and <a href="gone.md">gone</a>',
+      '',
+      '| a | b |',
+      '|---|---|',
+      '| ![t](cell.png) | [ref][later] |',
+      '',
+      '[later]: later.md',
+      '',
+      'One[^1], two[^two], `[^code]` and three[^none].',
+      '',
+      '[^1]: See',
+      '[^two]: A note',
+      '  that goes on.',
+      '',
+      '```md',
+      '![x](in-code.png) [y](in-code.md) [z](#in-code) [^in-code]',
+      '```',
+      '',
+      'Inline `![x](in-span.png)` and a formula $a[i](in-math.md)$.'
+    ].join('\n');
+    const problems = await findBrokenReferences(markdown, { file: strictFile, ids: ['intro'], math: true });
+    assert.deepStrictEqual(brief(problems), [
+      'image 6 missing.png',
+      'link 8 ./other.md',
+      'anchor 10 #nope',
+      'image 12 gone.png',
+      'link 12 gone.md',
+      'image 16 cell.png',
+      'link 16 later.md',
+      'footnote 20 [^none]'
+    ]);
+    assert.strictEqual(formatProblem(problems[0]), `${strictFile}:6: image cannot be loaded (file not found): missing.png`);
+    assert.strictEqual(problems[1].message, 'linked file not found: ./other.md');
+    assert.strictEqual(problems[2].message, 'no heading has the anchor #nope');
+    assert.strictEqual(problems[7].message, 'footnote has no definition: [^none]');
+
+    // Without the formulas taken out, the link inside the formula is one the converter writes.
+    const plain = await findBrokenReferences('$a[i](in-math.md)$', { file: strictFile });
+    assert.deepStrictEqual(brief(plain), ['link 1 in-math.md']);
+    assert.deepStrictEqual(await findBrokenReferences('# Fine\n\n![a](pic.png) [b](#fine)', { file: strictFile, ids: ['fine'] }), []);
+  });
+
+  await asyncTest('references: absolute paths and file: addresses are looked up as the exporters do', async () => {
+    const there = path.join(strictDir, 'my pic.png');
+    const gone = path.join(strictDir, 'gone.png');
+    const markdown = [
+      `![a](${pathToFileURL(there).href})`,
+      `![b](${pathToFileURL(gone).href})`,
+      `![c](<${there}>)`,
+      `![d](<${gone}>)`,
+      '![e](docs)'
+    ].join('\n');
+    // From another folder: nothing here depends on where the document is.
+    const problems = await findBrokenReferences(markdown, { file: path.join(os.homedir(), 'doc.md') });
+    assert.deepStrictEqual(brief(problems).slice(0, 2), [`image 2 ${pathToFileURL(gone).href}`, `image 4 ${gone}`]);
+    const folder = await findBrokenReferences('![e](docs)', { file: strictFile });
+    assert.strictEqual(folder[0].message, 'image cannot be loaded (not a file): docs');
+  });
+
+  await asyncTest('references: a problem in an imported file is reported with that file and its own line', async () => {
+    fs.writeFileSync(path.join(strictDir, 'part.md'), '---\ntitle: Part\n---\n## Part\n\n![p](part-missing.png)\n\n@import "deep.md"\n');
+    fs.writeFileSync(path.join(strictDir, 'deep.md'), 'Deep [x](deep-missing.md)\n');
+    const main = '# Main\n\n@import "part.md"\n\n[after](after-missing.md)\n';
+    const expanded = expandIncludes(main, strictFile);
+    assert.strictEqual(expanded.origins.length, expanded.content.split('\n').length);
+    const problems = await findBrokenReferences(expanded.content, { file: strictFile, origins: expanded.origins });
+    assert.deepStrictEqual(
+      problems.map(problem => `${path.basename(problem.file)}:${problem.line} ${problem.reference}`),
+      ['part.md:6 part-missing.png', 'deep.md:1 deep-missing.md', 'doc.md:5 after-missing.md']
+    );
+  });
+
+  await asyncTest('references: a web picture is asked for only on request, and one that does not answer is reported', async () => {
+    const http = require('http');
+    let requests = 0;
+    const server = http.createServer((request, response) => {
+      requests += 1;
+      response.statusCode = { '/ok.png': 200, '/gone.png': 404, '/private.png': 403 }[request.url] || 500;
+      response.end('x');
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const closed = http.createServer();
+    await new Promise(resolve => closed.listen(0, '127.0.0.1', resolve));
+    const dead = `http://127.0.0.1:${closed.address().port}/x.png`;
+    await new Promise(resolve => closed.close(resolve));
+
+    const markdown = `![a](${base}/ok.png)\n![b](${base}/gone.png)\n![c](${base}/private.png)\n![d](${dead})\n![b](${base}/gone.png)`;
+    try {
+      assert.deepStrictEqual(await findBrokenReferences(markdown, { file: strictFile }), []);
+      assert.strictEqual(requests, 0);
+      const problems = await findBrokenReferences(markdown, { file: strictFile, remote: true });
+      assert.deepStrictEqual(brief(problems), [`image 2 ${base}/gone.png`, `image 4 ${dead}`, `image 5 ${base}/gone.png`]);
+      assert.strictEqual(problems[0].message, `image cannot be loaded (the server answered 404): ${base}/gone.png`);
+      assert.strictEqual(problems[1].message, `image cannot be loaded (no answer): ${dead}`);
+      // Each address is asked for once.
+      assert.strictEqual(requests, 3);
+    } finally {
+      server.closeAllConnections();
+      await new Promise(resolve => server.close(resolve));
+    }
+  });
+
+  await asyncTest('core.convertMarkdownToPdf: strict writes nothing for a document with broken references, in every format', async () => {
+    assert.deepStrictEqual([...htmlIds('<h1 id="a">A</h1><a name=\'b\'></a><p>id="no"</p>')], ['a', 'b']);
+    fs.writeFileSync(strictFile, '# Intro\n\n## Second part\n\n![m](missing.png) [d](./other.md) [a](#nope) [ok](#second-part)\n');
+    for (const format of ['html', 'docx', 'epub']) {
+      const out = path.join(strictDir, `doc.${format}`);
+      await assert.rejects(convertMarkdownToPdf(strictFile, null, { format, strict: true, toc: true }), (error) => {
+        assert.strictEqual(error.code, 'BROKEN_REFERENCES');
+        assert.deepStrictEqual(brief(error.problems), ['image 5 missing.png', 'link 5 ./other.md', 'anchor 5 #nope']);
+        assert.ok(error.message.includes(`${strictFile}:5: no heading has the anchor #nope`));
+        return true;
+      });
+      assert.ok(!fs.existsSync(out), `${format}: nothing is written`);
+      // Without strict the same document is converted as before.
+      await convertMarkdownToPdf(strictFile, null, { format, toc: true });
+      assert.ok(fs.existsSync(out));
+      fs.unlinkSync(out);
+    }
+    assert.ok(!fs.readdirSync(strictDir).some(name => name.startsWith('_temp_')));
+
+    // The anchors are those of the output: HTML and PDF headings get theirs from the contents list.
+    const anchors = path.join(strictDir, 'anchors.md');
+    fs.writeFileSync(anchors, '# Intro\n\n## Second part\n\n[ok](#second-part) ![p](pic.png) [f](docs/a.pdf) Note[^1].\n\n[^1]: The note.\n');
+    for (const format of ['docx', 'epub']) {
+      const result = await convertMarkdownToPdf(anchors, null, { format, strict: true });
+      assert.ok(fs.existsSync(result.outputPath));
+    }
+    assert.ok(fs.existsSync((await convertMarkdownToPdf(anchors, null, { format: 'html', strict: true, toc: true })).outputPath));
+    fs.unlinkSync(path.join(strictDir, 'anchors.html'));
+    await assert.rejects(convertMarkdownToPdf(anchors, null, { format: 'html', strict: true }), (error) => {
+      assert.deepStrictEqual(brief(error.problems), ['anchor 5 #second-part']);
+      assert.ok(error.problems[0].message.includes('--toc'));
+      return true;
+    });
+    assert.ok(!fs.existsSync(path.join(strictDir, 'anchors.html')));
+  });
+
+  test('cli: --strict lists every broken reference, leaves that file unwritten and exits 1; .mdpdfrc can set it', () => {
+    const { spawnSync } = require('child_process');
+    const cliPath = path.join(__dirname, '..', 'bin', 'cli.js');
+    const cli = (...args) => spawnSync(process.execPath, [cliPath, ...args], { cwd: strictDir, encoding: 'utf8' });
+    fs.writeFileSync(path.join(strictDir, 'bad.md'), '# Bad\n\n![m](missing.png)\n\n[d](./other.md)\n\n[a](#nope)\n');
+    fs.writeFileSync(path.join(strictDir, 'good.md'), '# Good\n\n![p](pic.png) [f](docs/a.pdf) [a](#good)\n');
+    const bad = path.join(strictDir, 'bad.md');
+
+    for (const format of ['docx', 'html']) {
+      const strict = cli('bad.md', 'good.md', '-f', format, '--toc', '--strict', '-o', 'out');
+      assert.strictEqual(strict.status, 1, strict.stdout);
+      assert.ok(strict.stderr.includes(`${bad}:3: image cannot be loaded (file not found): missing.png`), strict.stderr);
+      assert.ok(strict.stderr.includes(`${bad}:5: linked file not found: ./other.md`));
+      assert.ok(strict.stderr.includes(`${bad}:7: no heading has the anchor #nope`));
+      assert.ok(strict.stderr.includes('--strict: 3 broken reference(s); 1 of 2 file(s) not written.'));
+      assert.ok(!fs.existsSync(path.join(strictDir, 'out', `bad.${format}`)));
+      // The other file is still checked and, being whole, written.
+      assert.ok(fs.existsSync(path.join(strictDir, 'out', `good.${format}`)));
+
+      const loose = cli('bad.md', '-f', format, '--toc', '-o', 'out');
+      assert.strictEqual(loose.status, 0, loose.stderr);
+      assert.strictEqual(loose.stderr, '');
+      assert.ok(fs.existsSync(path.join(strictDir, 'out', `bad.${format}`)));
+      fs.rmSync(path.join(strictDir, 'out'), { recursive: true, force: true });
+    }
+
+    fs.writeFileSync(path.join(strictDir, '.mdpdfrc'), JSON.stringify({ format: 'html', strict: true }));
+    const fromConfig = cli('bad.md');
+    assert.strictEqual(fromConfig.status, 1);
+    assert.ok(fromConfig.stderr.includes('missing.png'));
+    assert.ok(!fs.existsSync(path.join(strictDir, 'bad.html')));
+    assert.strictEqual(cli('bad.md', '--no-config', '-f', 'html').status, 0);
+    assert.ok(cli('--help').stdout.includes('--strict'));
+    fs.rmSync(strictDir, { recursive: true, force: true });
+  });
+
   console.log(`\n\x1b[33mSummary:\x1b[0m ${passed}/${total} tests passed.`);
   if (passed !== total) {
     process.exit(1);

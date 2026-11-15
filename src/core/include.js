@@ -29,12 +29,17 @@ function fenceFor(code) {
   return '`'.repeat(Math.max(3, longest + 1));
 }
 
+/**
+ * The lines of the expanded document, each with the file and line it came from.
+ * @returns {{ text: string, file: string, line: number }[]}
+ */
 function expand(markdown, filePath, chain, files) {
   const baseDir = path.dirname(filePath);
   const output = [];
   let fence = null;
 
   markdown.split(/\r?\n/).forEach((line, index) => {
+    const origin = { file: filePath, line: index + 1 };
     const fenceMatch = line.match(FENCE_LINE);
     if (fenceMatch) {
       const marker = fenceMatch[1];
@@ -43,13 +48,13 @@ function expand(markdown, filePath, chain, files) {
       } else if (marker[0] === fence[0] && marker.length >= fence.length && line.trim() === marker) {
         fence = null;
       }
-      output.push(line);
+      output.push({ text: line, ...origin });
       return;
     }
 
     const importMatch = fence ? null : line.match(IMPORT_LINE);
     if (!importMatch) {
-      output.push(line);
+      output.push({ text: line, ...origin });
       return;
     }
 
@@ -73,16 +78,26 @@ function expand(markdown, filePath, chain, files) {
     const extension = path.extname(target).toLowerCase();
 
     if (MARKDOWN_EXTENSIONS.has(extension)) {
+      // The front matter is left out; the lines keep the numbers they have in the file.
       const body = parseFrontMatter(text).content;
-      output.push(expand(body, target, [...chain, target], files).replace(/(\r?\n)+$/, ''));
+      const skipped = text.slice(0, text.length - body.length).split('\n').length - 1;
+      const lines = expand(body, target, [...chain, target], files);
+      lines.forEach(entry => {
+        if (entry.file === target) entry.line += skipped;
+      });
+      // Blank lines at the end of the file are dropped.
+      while (lines.length > 1 && lines[lines.length - 1].text === '') lines.pop();
+      output.push(...lines);
     } else {
       const code = text.replace(/(\r?\n)+$/, '');
       const marker = fenceFor(code);
-      output.push(`${marker}${extension.slice(1)}`, code, marker);
+      output.push({ text: `${marker}${extension.slice(1)}`, ...origin });
+      code.split('\n').forEach((codeLine, codeIndex) => output.push({ text: codeLine, file: target, line: codeIndex + 1 }));
+      output.push({ text: marker, ...origin });
     }
   });
 
-  return output.join('\n');
+  return output;
 }
 
 /**
@@ -90,14 +105,19 @@ function expand(markdown, filePath, chain, files) {
  * it names.
  * @param {string} markdown Content of the document
  * @param {string} filePath Path of the document; imports are relative to it
- * @returns {{ content: string, files: string[] }} The expanded Markdown and
- *   the absolute path of every file that was imported, directly or not
+ * @returns {{ content: string, files: string[], origins: { file: string, line: number }[] }}
+ *   The expanded Markdown, the absolute path of every file that was imported, directly or
+ *   not, and for each line of the expanded Markdown the file and line it was read from
  */
 function expandIncludes(markdown = '', filePath = '') {
   const absolutePath = path.resolve(filePath || 'document.md');
   const files = new Set();
-  const content = expand(markdown, absolutePath, [absolutePath], files);
-  return { content, files: Array.from(files) };
+  const lines = expand(markdown, absolutePath, [absolutePath], files);
+  return {
+    content: lines.map(line => line.text).join('\n'),
+    files: Array.from(files),
+    origins: lines.map(({ file, line }) => ({ file, line }))
+  };
 }
 
 module.exports = {

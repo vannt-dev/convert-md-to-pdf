@@ -5,6 +5,7 @@ const { Command } = require('commander');
 const path = require('path');
 const fs = require('fs');
 const { convertMarkdownToPdf } = require('../src/core/index');
+const { formatProblem } = require('../src/core/references');
 const { normalizePageNumbersArgs, parseMarginText } = require('../src/cli/options');
 const { findConfigFile, layerOptions, loadConfig } = require('../src/cli/config');
 const { parseFrontMatter } = require('../src/core/utils');
@@ -45,6 +46,7 @@ program
   .option('--no-highlight', 'Disable syntax highlighting of code blocks')
   .option('--no-include', 'Leave @import "file" lines as they are instead of inserting the file')
   .option('--no-outline', 'Leave out the PDF bookmarks (outline) made from the headings')
+  .option('--strict', 'Fail, writing nothing, when a picture, a linked local file, an #anchor or a footnote is missing', false)
   .option('-b, --browser <path>', 'Custom Chrome/Edge executable path')
   .option('--config <path>', 'Project config file (default: .mdpdfrc or .mdpdfrc.json here or in a parent)')
   .option('--no-config', 'Do not read a project config file')
@@ -111,6 +113,7 @@ program
         if (options.watermark) console.log(`   Mark:   Watermark "${options.watermark}"`);
         if (options.pageNumbers) console.log(`   Pages:  Page numbers (${options.pageNumbers === true ? 'full' : options.pageNumbers})`);
         if (options.css) console.log(`   CSS:    ${path.resolve(options.css)}`);
+        if (options.strict) console.log('   Strict: a file with broken references is not written');
         console.log('   (a file\'s front matter can change these for that file)');
 
         let targetOutputDir = null;
@@ -127,6 +130,9 @@ program
         }
 
         let count = 0;
+        // With --strict: the files left unwritten because of broken references.
+        let refused = 0;
+        let brokenReferences = 0;
         for (const file of inputFiles) {
           const fileBaseName = path.parse(file).name;
           let fileOutPath = null;
@@ -144,29 +150,41 @@ program
           const markdown = fromStdin ? stdinMarkdown : fs.readFileSync(file, 'utf8');
           const fileOptions = layerOptions(flags, config, parseFrontMatter(markdown).data);
           const landscape = fileOptions.landscape;
-          const result = await convertMarkdownToPdf(file, fileOutPath, {
-            format: targetFormat,
-            markdown,
-            theme: fileOptions.theme,
-            font: fileOptions.font,
-            pageSize: fileOptions.pageSize,
-            orientation: landscape === undefined ? undefined : landscape ? 'landscape' : 'portrait',
-            margin: fileOptions.margin,
-            toc: fileOptions.toc,
-            cover: fileOptions.cover,
-            header: fileOptions.header,
-            footer: fileOptions.footer,
-            pageNumbers: fileOptions.pageNumbers,
-            watermark: fileOptions.watermark,
-            cssFile: fileOptions.css,
-            keepHtml: fileOptions.keepHtml,
-            mermaid: fileOptions.mermaid,
-            katex: fileOptions.katex,
-            highlight: fileOptions.highlight,
-            include: fileOptions.include,
-            outline: fileOptions.outline,
-            executablePath: fileOptions.browser
-          });
+          let result;
+          try {
+            result = await convertMarkdownToPdf(file, fileOutPath, {
+              format: targetFormat,
+              markdown,
+              theme: fileOptions.theme,
+              font: fileOptions.font,
+              pageSize: fileOptions.pageSize,
+              orientation: landscape === undefined ? undefined : landscape ? 'landscape' : 'portrait',
+              margin: fileOptions.margin,
+              toc: fileOptions.toc,
+              cover: fileOptions.cover,
+              header: fileOptions.header,
+              footer: fileOptions.footer,
+              pageNumbers: fileOptions.pageNumbers,
+              watermark: fileOptions.watermark,
+              cssFile: fileOptions.css,
+              keepHtml: fileOptions.keepHtml,
+              mermaid: fileOptions.mermaid,
+              katex: fileOptions.katex,
+              highlight: fileOptions.highlight,
+              include: fileOptions.include,
+              outline: fileOptions.outline,
+              strict: fileOptions.strict,
+              executablePath: fileOptions.browser
+            });
+          } catch (err) {
+            if (err.code !== 'BROKEN_REFERENCES') throw err;
+            // Every file is still checked, so one run lists all the problems.
+            err.problems.forEach(problem => console.error(`   \x1b[31m✖\x1b[0m ${formatProblem(problem)}`));
+            console.error(`   \x1b[31m✖ Not written:\x1b[0m ${err.problems.length} broken reference(s)`);
+            refused++;
+            brokenReferences += err.problems.length;
+            continue;
+          }
 
           result.includedFiles.forEach(includedFile => importedFiles.add(includedFile));
           const outPathDisplay = result.outputPath;
@@ -174,6 +192,9 @@ program
           count++;
         }
 
+        if (refused > 0) {
+          throw new Error(`--strict: ${brokenReferences} broken reference(s); ${refused} of ${inputFiles.length} file(s) not written.`);
+        }
         const duration = ((Date.now() - startTime) / 1000).toFixed(2);
         console.log(`\x1b[32m✨ Conversion complete!\x1b[0m ${count} file(s) generated in ${duration}s.`);
       };

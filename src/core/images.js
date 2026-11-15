@@ -61,6 +61,24 @@ function fileUrlPath(src, windows = process.platform === 'win32') {
 }
 
 /**
+ * The local file an image address names, the way the exporters look it up.
+ * @param {string} src As written in the document
+ * @param {string} baseDir Folder of the document
+ * @returns {string | null} null when the address names no local file (a web address, for one)
+ */
+function localImagePath(src, baseDir) {
+  if (!src || /^[a-z][a-z0-9+.-]*:/i.test(src) && !/^file:/i.test(src) && !/^[a-zA-Z]:[\\/]/.test(src)) return null;
+  if (/^file:/i.test(src)) return fileUrlPath(src);
+  let relative = src.split(/[?#]/)[0];
+  try {
+    relative = decodeURIComponent(relative);
+  } catch (_) {
+    // A stray percent sign: the name is used as written.
+  }
+  return path.resolve(baseDir || process.cwd(), relative);
+}
+
+/**
  * Reads the image a Markdown document refers to.
  * @param {string} src As written in the document
  * @param {string} baseDir Folder of the document
@@ -68,20 +86,8 @@ function fileUrlPath(src, windows = process.platform === 'win32') {
  *   null when it is not a readable local file of a known type (a web address, for one)
  */
 function readLocalImage(src, baseDir) {
-  if (!src || /^[a-z][a-z0-9+.-]*:/i.test(src) && !/^file:/i.test(src) && !/^[a-zA-Z]:[\\/]/.test(src)) return null;
-  let filePath;
-  if (/^file:/i.test(src)) {
-    filePath = fileUrlPath(src);
-    if (!filePath) return null;
-  } else {
-    let relative = src.split(/[?#]/)[0];
-    try {
-      relative = decodeURIComponent(relative);
-    } catch (_) {
-      // A stray percent sign: the name is used as written.
-    }
-    filePath = path.resolve(baseDir || process.cwd(), relative);
-  }
+  const filePath = localImagePath(src, baseDir);
+  if (!filePath) return null;
   const extension = path.extname(filePath).slice(1).toLowerCase();
   if (!MEDIA_TYPES[extension] || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return null;
   const data = fs.readFileSync(filePath);
@@ -91,5 +97,6 @@ function readLocalImage(src, baseDir) {
 module.exports = {
   fileUrlPath,
   imageSize,
+  localImagePath,
   readLocalImage
 };
