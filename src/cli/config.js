@@ -36,6 +36,7 @@ const CONFIG_KEYS = {
   highlight: BOOLEAN,
   include: BOOLEAN,
   outline: BOOLEAN,
+  strict: BOOLEAN,
   browser: STRING
 };
 
@@ -48,7 +49,7 @@ const FRONT_MATTER_KEYS = {
   css: ['cssFile', 'css']
 };
 /** Options that front matter cannot set: the config file always applies to them. */
-const NOT_IN_FRONT_MATTER = ['output', 'format', 'keepHtml', 'include', 'browser'];
+const NOT_IN_FRONT_MATTER = ['output', 'format', 'keepHtml', 'include', 'strict', 'browser'];
 
 /**
  * The config file that applies to `startDir`: `.mdpdfrc` or `.mdpdfrc.json` in that folder or

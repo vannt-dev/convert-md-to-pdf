@@ -7,6 +7,8 @@ const { resolvePath, parseFrontMatter } = require('./utils');
 const { expandIncludes } = require('./include');
 const { markdownToDocx } = require('./docx');
 const { markdownToEpub } = require('./epub');
+const { buildDocument, collectHeadings } = require('./docmodel');
+const { BrokenReferencesError, findBrokenReferences, htmlIds } = require('./references');
 
 const FORMATS = ['pdf', 'html', 'docx', 'epub'];
 
@@ -48,7 +50,9 @@ function pdfOutline(markdown, options = {}) {
  * @param {string} inputPath Path to source .md file
  * @param {string} [outputPath] Path to the target file
  * @param {Object} [options] Conversion options. `options.markdown` gives the Markdown itself
- *   (e.g. read from stdin); `inputPath` then need not exist and only places relative paths
+ *   (e.g. read from stdin); `inputPath` then need not exist and only places relative paths.
+ *   `options.strict` refuses a document with broken references: nothing is written and the
+ *   promise is rejected with a BrokenReferencesError that lists them in `problems`
  * @returns {Promise<{ outputPath: string, htmlPath: string, pdfPath: string, includedFiles: string[] }>}
  *   `outputPath` is the file that was asked for, whatever its format
  */
@@ -77,13 +81,24 @@ async function convertMarkdownToPdf(inputPath, outputPath, options = {}) {
   // Read Markdown, pulling in the files it imports with `@import "path"`
   let markdownContent = fromText ? options.markdown : fs.readFileSync(absInputPath, 'utf8');
   let includedFiles = [];
+  let origins;
   if (options.include !== false) {
-    ({ content: markdownContent, files: includedFiles } = expandIncludes(markdownContent, absInputPath));
+    ({ content: markdownContent, files: includedFiles, origins } = expandIncludes(markdownContent, absInputPath));
   }
+  // With `strict`, called with the ids of the output before anything is written.
+  const refuseBrokenReferences = async (ids, extra = {}) => {
+    if (!options.strict) return;
+    const problems = await findBrokenReferences(markdownContent, { file: absInputPath, origins, ids, ...extra });
+    if (problems.length) throw new BrokenReferencesError(absInputPath, problems);
+  };
 
   // Word and EPUB are written from the Markdown itself, without a browser
   if (format === 'docx' || format === 'epub') {
     const build = format === 'docx' ? markdownToDocx : markdownToEpub;
+    if (options.strict) {
+      const ids = collectHeadings(buildDocument(markdownContent, options).blocks).map(heading => heading.id);
+      await refuseBrokenReferences(ids, { math: options.katex !== false });
+    }
     fs.writeFileSync(absOutputPath, build(markdownContent, { ...options, baseDir: path.dirname(absInputPath) }));
     return {
       outputPath: absOutputPath,
@@ -95,6 +110,18 @@ async function convertMarkdownToPdf(inputPath, outputPath, options = {}) {
 
   // Parse to HTML
   const htmlContent = parseMarkdownToHtml(markdownContent, options);
+
+  if (options.strict) {
+    const frontMatter = parseFrontMatter(markdownContent).data;
+    const toc = options.toc !== undefined ? options.toc : frontMatter.toc;
+    await refuseBrokenReferences(htmlIds(htmlContent), {
+      // What stands inside a formula is not Markdown, unless KaTeX is off.
+      math: options.katex !== undefined ? options.katex : frontMatter.katex !== false,
+      // Only the browser that prints the PDF loads pictures from the web.
+      remote: format === 'pdf',
+      anchorHint: toc ? '' : 'in PDF and HTML the headings get their anchors from --toc'
+    });
+  }
 
   if (format === 'html') {
     fs.writeFileSync(absOutputPath, htmlContent, 'utf8');
@@ -139,8 +166,10 @@ async function convertMarkdownToPdf(inputPath, outputPath, options = {}) {
 }
 
 module.exports = {
+  BrokenReferencesError,
   convertMarkdownToPdf,
   expandIncludes,
+  findBrokenReferences,
   markdownToDocx,
   markdownToEpub,
   parseMarkdownToHtml,
