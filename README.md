@@ -2,7 +2,7 @@
 
 > Repeatable document builds from Markdown: one command turns the `.md` files in a repo into **PDF**, **Word (`.docx`)**, **EPUB** or **static HTML**, on your own machine or in a CI job. Theme, cover page, table of contents, page numbers, running header/footer and watermark are set in a project `.mdpdfrc` file, in each file's YAML front matter or on the command line, so every build of a document uses the same settings, and any error ends the run with exit code 1 so the job fails. PDF uses an installed Chrome, Edge or Chromium (or the one given with `--browser`); HTML, Word and EPUB need no browser.
 
-The second way in is a **Browser Extension (Manifest V3)**: drop `.md` files into the popup, paste text, or convert the page you are on, then save it as PDF or static HTML. Both share the 7 preset themes and the open-source fonts, and both render **Mermaid diagrams**, **LaTeX math**, **GitHub callout alerts** and **custom CSS**.
+The second way in is a **Browser Extension (Manifest V3)**: drop `.md` files into the popup, paste text, or convert the page you are on, then save it as PDF or static HTML. Both share the 7 preset themes and the font selector (the extension preview loads Inter, Merriweather and JetBrains Mono; Roboto, Lora and Fira Code show only when installed on the computer), and both render **Mermaid diagrams**, **LaTeX math**, **GitHub callout alerts** and **custom CSS**.
 
 [![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-Install_Extension-4285F4?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/markdown-to-pdf-converter/djikikejkmkklfeklfmddaadilhahamj)
 [![Chrome Web Store users](https://img.shields.io/chrome-web-store/users/djikikejkmkklfeklfmddaadilhahamj?label=Chrome%20users)](https://chromewebstore.google.com/detail/markdown-to-pdf-converter/djikikejkmkklfeklfmddaadilhahamj)
@@ -36,7 +36,7 @@ anything else is not published by vannt-dev.
 - 💧 **Watermark**: `--watermark DRAFT` prints the text large, faint and diagonal across the middle of every page, cover included; long text gets smaller so it still fits. Front matter `watermark: Internal` does the same, and `--watermark ""` turns it off for one run. PDF and HTML; Word and EPUB leave it out.
 - 📌 **Dotted Leader Line Table of Contents (TOC)**: Auto-generates publication-grade TOC with dotted leader lines (`...`) and clickable anchor links (`--toc`).
 - 🎨 **7 Preset Themes**: `modern` (default), `dark`, `academic`, `github`, `ebook`, `cyberpunk`, and `minimal`.
-- 🔤 **Open-Source Font Selector**: 100% free under SIL OFL / Apache 2.0 (`Inter`, `Roboto`, `Lora`, `Merriweather`, `JetBrains Mono`, `Fira Code`).
+- 🔤 **Open-Source Font Selector**: 100% free under SIL OFL / Apache 2.0 (`Inter`, `Roboto`, `Lora`, `Merriweather`, `JetBrains Mono`, `Fira Code`). The CLI loads all six; the extension preview loads Inter, Merriweather and JetBrains Mono, and uses Roboto, Lora or Fira Code only when it is installed on the computer (otherwise a fallback font).
 - ⚡ **Live Watch Mode & HTML Export**: Real-time auto-recompilation on file changes (`-w, --watch`) and direct static HTML export (`-f, --format html`).
 - 🚀 **CLI & Batch Conversion**: Convert single files or batch process directories with wildcard patterns.
 - 🎨 **Custom CSS Injection**: Inject custom branding CSS stylesheets (`-c, --css custom.css`).
@@ -66,8 +66,8 @@ You can install the official published extension directly with 1-click:
    ```
 2. Open your browser and navigate to `chrome://extensions` (or `edge://extensions`).
 3. Enable **Developer mode** (toggle in the top-right corner).
-4. Click **Load unpacked** (Tải tiện ích đã giải nén).
-5. Select the **`extension`** directory inside this repository (or load `dist/extension-latest.zip`).
+4. Click **Load unpacked**.
+5. Select the **`extension`** directory inside this repository (or unzip `dist/extension-latest.zip`, built by `npm run build:extension`, and select the unzipped folder).
 6. The **Markdown to PDF Converter** icon will appear in your browser toolbar!
 
 ---
@@ -258,6 +258,7 @@ convert-md-to-pdf/
 │   │   ├── themes/          # Modular Theme CSS collection
 │   │   │   ├── index.js     # Theme registry & font override builder
 │   │   │   ├── cover.js     # Cover page CSS
+│   │   │   ├── highlight.js # Code syntax highlighting colours
 │   │   │   ├── modern.js    # Modern blue theme
 │   │   │   ├── dark.js      # Dark slate theme
 │   │   │   ├── academic.js  # Academic serif theme
@@ -267,6 +268,9 @@ convert-md-to-pdf/
 │   │   │   └── minimal.js   # Minimal monochrome theme
 │   │   ├── frontmatter.js   # YAML front matter parser
 │   │   ├── include.js       # @import "file" expansion
+│   │   ├── footnotes.js     # Footnotes (shared with the extension)
+│   │   ├── math.js          # LaTeX math ($...$, $$...$$) for KaTeX (shared with the extension)
+│   │   ├── references.js    # Broken image, link, anchor & footnote checks (--strict)
 │   │   ├── docmodel.js      # Format-neutral document model (blocks of flat runs)
 │   │   ├── docx.js          # Word (.docx) writer
 │   │   ├── epub.js          # EPUB 3 writer
@@ -280,7 +284,6 @@ convert-md-to-pdf/
 │   │   ├── templates.js     # HTML document template builder
 │   │   ├── pagemarks.js     # Page numbers & running header/footer CSS (shared with the extension)
 │   │   └── index.js         # Main library API entrypoint
-│   ├── cli/                 # Command line option checks (options.js)
 │   └── browser/             # Headless browser rendering engine
 │       └── renderer.js      # Runs installed Chrome/Edge headless (--print-to-pdf) & PDF worker pool
 ├── extension/               # Browser Extension (Manifest V3)
