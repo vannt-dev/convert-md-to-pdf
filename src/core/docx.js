@@ -49,9 +49,9 @@ function bookmarkName(id) {
 }
 
 class DocxWriter {
-  constructor(document, baseDir) {
+  constructor(document, readImage) {
     this.document = document;
-    this.baseDir = baseDir;
+    this.readImage = readImage;
     this.relationships = [];
     this.media = [];
     this.orderedLists = [];
@@ -105,7 +105,7 @@ class DocxWriter {
   }
 
   imageRun(run) {
-    const image = readLocalImage(run.image.src, this.baseDir);
+    const image = this.readImage(run.image.src);
     if (!image || !image.size || !['png', 'jpg', 'gif'].includes(image.extension)) {
       // Not a file Word can hold: say what was there instead of dropping it silently.
       const label = run.image.alt ? `${run.image.alt} (${run.image.src})` : run.image.src;
@@ -412,7 +412,7 @@ class DocxWriter {
     );
   }
 
-  build() {
+  entries() {
     const { meta } = this.document;
     // The body first: it is what registers images, links and lists.
     const documentXml = this.documentXml();
@@ -457,7 +457,7 @@ class DocxWriter {
       `<dc:title>${xml(meta.title)}</dc:title>${meta.author ? `<dc:creator>${xml(meta.author)}</dc:creator>` : ''}` +
       '</cp:coreProperties>';
 
-    return createZip([
+    return [
       { name: '[Content_Types].xml', data: contentTypes },
       { name: '_rels/.rels', data: packageRels },
       { name: 'docProps/core.xml', data: core },
@@ -466,7 +466,7 @@ class DocxWriter {
       { name: 'word/numbering.xml', data: numberingXml },
       { name: 'word/_rels/document.xml.rels', data: documentRels },
       ...this.media.map(file => ({ name: `word/media/${file.name}`, data: file.data, store: true }))
-    ]);
+    ];
   }
 }
 
@@ -479,15 +479,29 @@ function decodeURIComponentSafe(value) {
 }
 
 /**
+ * The files of a .docx package, in the order they are zipped.
+ * @param {string} rawMarkdown
+ * @param {Object} [options] The converter's options, plus `baseDir`: the folder images are relative to,
+ *   or `readImage(src)`: how to get an image instead of reading a local file (the browser extension
+ *   hands over the pictures its page has), returning what `readLocalImage` returns, or null
+ * @returns {{ name: string, data: Uint8Array | string, store?: boolean }[]}
+ */
+function docxEntries(rawMarkdown, options = {}) {
+  const readImage = options.readImage || (src => readLocalImage(src, options.baseDir));
+  return new DocxWriter(buildDocument(rawMarkdown, options), readImage).entries();
+}
+
+/**
  * Converts Markdown to the bytes of a .docx file.
  * @param {string} rawMarkdown
- * @param {Object} [options] The converter's options, plus `baseDir`: the folder images are relative to
+ * @param {Object} [options] See docxEntries
  * @returns {Buffer}
  */
 function markdownToDocx(rawMarkdown, options = {}) {
-  return new DocxWriter(buildDocument(rawMarkdown, options), options.baseDir).build();
+  return createZip(docxEntries(rawMarkdown, options));
 }
 
 module.exports = {
+  docxEntries,
   markdownToDocx
 };

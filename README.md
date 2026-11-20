@@ -2,7 +2,7 @@
 
 > Repeatable document builds from Markdown: one command turns the `.md` files in a repo into **PDF**, **Word (`.docx`)**, **EPUB** or **static HTML**, on your own machine or in a CI job. Theme, cover page, table of contents, page numbers, running header/footer and watermark are set in a project `.mdpdfrc` file, in each file's YAML front matter or on the command line, so every build of a document uses the same settings, and any error ends the run with exit code 1 so the job fails. PDF uses an installed Chrome, Edge or Chromium (or the one given with `--browser`); HTML, Word and EPUB need no browser.
 
-The second way in is a **Browser Extension (Manifest V3)**: drop `.md` files into the popup, paste text, or convert the page you are on, then save it as PDF or static HTML. Both share the 7 preset themes and the font selector (the extension preview loads Inter, Merriweather and JetBrains Mono; Roboto, Lora and Fira Code show only when installed on the computer), and both render **Mermaid diagrams**, **LaTeX math**, **GitHub callout alerts** and **custom CSS**.
+The second way in is a **Browser Extension (Manifest V3)**: drop `.md` files into the popup, paste text, or convert the page you are on, then save it as PDF, static HTML or Word (`.docx`). Both share the 7 preset themes and the font selector (the extension preview loads Inter, Merriweather and JetBrains Mono; Roboto, Lora and Fira Code show only when installed on the computer), and both render **Mermaid diagrams**, **LaTeX math**, **GitHub callout alerts** and **custom CSS**.
 
 [![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-Install_Extension-4285F4?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/markdown-to-pdf-converter/djikikejkmkklfeklfmddaadilhahamj)
 [![Chrome Web Store users](https://img.shields.io/chrome-web-store/users/djikikejkmkklfeklfmddaadilhahamj?label=Chrome%20users)](https://chromewebstore.google.com/detail/markdown-to-pdf-converter/djikikejkmkklfeklfmddaadilhahamj)
@@ -14,7 +14,7 @@ The second way in is a **Browser Extension (Manifest V3)**: drop `.md` files int
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/vannt-dev/convert-md-to-pdf/main/docs/diagrams/overview-dark.svg">
-  <img alt="The md-pdf-studio CLI reads Markdown files or stdin with the settings of .mdpdfrc, the front matter and the command-line flags, and writes a PDF printed by Chrome, Edge or Chromium, or static HTML, Word or EPUB without a browser, ending with exit code 1 on any error; the browser extension takes .md files, pasted text or the current page from its popup or context menu into a print preview and saves a PDF or static HTML." src="https://raw.githubusercontent.com/vannt-dev/convert-md-to-pdf/main/docs/diagrams/overview-light.svg">
+  <img alt="The md-pdf-studio CLI reads Markdown files or stdin with the settings of .mdpdfrc, the front matter and the command-line flags, and writes a PDF printed by Chrome, Edge or Chromium, or static HTML, Word or EPUB without a browser, ending with exit code 1 on any error; the browser extension takes .md files, pasted text or the current page from its popup or context menu into a print preview and saves a PDF, static HTML or Word." src="https://raw.githubusercontent.com/vannt-dev/convert-md-to-pdf/main/docs/diagrams/overview-light.svg">
 </picture>
 
 ---
@@ -30,6 +30,7 @@ anything else is not published by vannt-dev.
   - Convert active web page or GitHub raw Markdown files with 1 click.
   - Context menu integration: Right-click selected Markdown text or any page -> "Convert to PDF".
   - Full-page Print Preview with live theme switching, Font Selector, Auto TOC, Custom CSS, and native PDF/HTML export.
+  - **Word (`.docx`) download** from the preview toolbar, written by the CLI's own Word writer (see Word & EPUB Export below): the same headings, lists, tables, code blocks, quotes, footnotes and links. Pictures written into the Markdown as `data:` addresses are embedded; a picture on the web or a relative path is named with its address, as the CLI does for web pictures (nothing is downloaded for the export). Mermaid diagrams and math are kept as their source, and the theme, page numbers and header/footer are for PDF only.
   - Page numbers and a running header/footer, set in the popup (off by default).
 - 📑 **Auto Cover Page Generator**: Generate elegant document report cover pages via YAML Front Matter (`cover: true`) or `--cover` flag. The author and date labels are in English, or in Vietnamese with `lang: vi` in the front matter.
 - 🔢 **Page Numbers & Running Header/Footer**: `--page-numbers` prints "Page 3 of 12" at the foot of each page (`--page-numbers simple` prints "3"). `--header "text"` and `--footer "text"` print a line of text at the top and foot of each page, with `{title}`, `{author}`, `{date}`, `{page}` and `{pages}` filled in (`--header "{title}"` prints the document title, `""` prints nothing). Both need their text right after the flag: `md2pdf --header README.md` is refused, because `README.md` is an input file. `--page-numbers` takes `full` or `simple` as its value and nothing else, so `md2pdf --page-numbers README.md` converts `README.md`. With both a footer and page numbers, the footer text sits left and the numbers right. The cover page is printed without them, but counts as page 1. All off by default; front matter keys `header`, `footer` and `pageNumbers` do the same. PDF only (the CLI and the extension); Word and EPUB leave them out.
@@ -44,7 +45,7 @@ anything else is not published by vannt-dev.
 - 🌈 **Syntax Highlighting**: Fenced code blocks that name a language (` ```js `, ` ```python `, ` ```diff `, …) are coloured at build time with highlight.js — no CDN, so it also works offline and in static HTML export. Colours follow the theme's code block background. Works in the CLI and in the extension preview.
 - 📐 **LaTeX Math Support**: `$...$` in the text and `$$...$$` blocks are drawn with KaTeX. Prices stay text: no space just inside the dollars and no digit right after the closing one (`$5 and $10` is not math). Code blocks are left alone. The extension ships KaTeX and its fonts, so math works offline there.
 - 📝 **Footnotes**: `text[^1]` with `[^1]: the note` anywhere in the file. Notes are numbered in the order they are first referenced, gathered at the end of the document, and linked both ways. Works in the CLI and in the extension preview.
-- 📘 **Word & EPUB Export (CLI)**: `-f docx` writes a Word document and `-f epub` an EPUB 3 e-book, straight from the Markdown and without a browser. Headings, lists (nested, numbered from any start, task lists), tables with their alignment, code blocks, quotes, footnotes, links and local images become the real thing in each format — Word styles you can restyle, a chapter per top-level heading and a navigation menu in the EPUB. `--toc`, `--cover`, page size, orientation and margins apply to Word; `--toc` and `--cover` to EPUB. Themes, custom CSS, Mermaid diagrams and KaTeX math are for PDF and HTML only: a diagram or formula is kept as its source. An image on the web is not downloaded — it is named in Word and becomes a link in the EPUB — and a link to a neighbouring file keeps its text only.
+- 📘 **Word & EPUB Export (CLI; Word also in the extension)**: `-f docx` writes a Word document and `-f epub` an EPUB 3 e-book, straight from the Markdown and without a browser. Headings, lists (nested, numbered from any start, task lists), tables with their alignment, code blocks, quotes, footnotes, links and local images become the real thing in each format — Word styles you can restyle, a chapter per top-level heading and a navigation menu in the EPUB. `--toc`, `--cover`, page size, orientation and margins apply to Word; `--toc` and `--cover` to EPUB. Themes, custom CSS, Mermaid diagrams and KaTeX math are for PDF and HTML only: a diagram or formula is kept as its source. An image on the web is not downloaded — it is named in Word and becomes a link in the EPUB — and a link to a neighbouring file keeps its text only.
 - 🔖 **PDF Bookmarks (CLI)**: The PDF gets an outline (bookmarks) built from its headings, nested by level, so a PDF viewer's sidebar can jump to any section. On by default; `--no-outline` or `outline: false` in the front matter leaves it out. The extension prints through the browser's print dialog, which does not add bookmarks.
 - 📎 **File Includes (CLI)**: A line that holds only `@import "chapters/intro.md"` is replaced by that file, relative to the file the line is in. A Markdown file is inserted as Markdown (without its front matter) and may import further files; any other file — `@import "src/app.js"` — is inserted as a code block labelled with its extension. Lines inside a code block are left alone, a missing file or files that import each other stop the conversion with the file and line, and watch mode follows the imported files. `--no-include` turns it off.
 - 🔒 **Strict Mode (CLI)**: `--strict` refuses a document with broken references instead of writing a file with holes in it: a picture that cannot be loaded (a missing or unreadable file, by relative path, absolute path or `file:///` address; for PDF also a web picture that does not answer), a link to a local file that does not exist, a link to an `#anchor` no heading has, and a footnote reference without a note. Every problem is listed with its file and line, also in imported files; that file is not written, the other inputs are still checked and converted, and the run ends with exit code 1. Works for PDF, HTML, Word and EPUB; `"strict": true` in `.mdpdfrc` turns it on for a repo. Code blocks and formulas are not searched. The anchors are those of the output: in PDF and HTML headings get them from `--toc`.
@@ -273,12 +274,14 @@ convert-md-to-pdf/
 │   │   ├── references.js    # Broken image, link, anchor & footnote checks (--strict)
 │   │   ├── docmodel.js      # Format-neutral document model (blocks of flat runs)
 │   │   ├── docx.js          # Word (.docx) writer
+│   │   ├── docx-browser.js  # Word export in the extension (bundled by scripts/bundle-docx.js)
 │   │   ├── epub.js          # EPUB 3 writer
 │   │   ├── images.js        # Local image reading & sizes
 │   │   ├── zip.js           # ZIP container writer for docx/epub
 │   │   ├── cover.js         # Cover page generator
 │   │   ├── toc.js           # Dotted leader line TOC generator
 │   │   ├── sanitizer.js     # HTML sanitizer & escaping
+│   │   ├── preprocess.js    # Markdown preprocessor (callouts, page breaks)
 │   │   ├── utils.js         # Preprocessors & helper re-exports
 │   │   ├── parser.js        # Pipeline parser (Markdown -> HTML)
 │   │   ├── templates.js     # HTML document template builder
@@ -291,8 +294,8 @@ convert-md-to-pdf/
 │   ├── background/          # Service worker & context menus
 │   ├── content/             # Content script for raw MD pages
 │   ├── popup/               # Extension Popup UI (Batch file, Paste, Page, History)
-│   ├── preview/             # Print Preview & PDF/HTML export page
-│   ├── lib/                 # Vendor libraries (marked, mermaid, katex) & code shared with the CLI
+│   ├── preview/             # Print Preview & PDF/HTML/Word export page
+│   ├── lib/                 # Vendor libraries (marked, mermaid, katex) & code shared with the CLI (docx-export.js: the Word writer)
 │   └── icons/               # Extension icons (16, 48, 128)
 ├── tests/                   # Standalone test suite (`npm test`)
 │   └── index.test.js

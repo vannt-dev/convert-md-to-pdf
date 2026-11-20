@@ -50,3 +50,7 @@ for (const shared of ['footnotes.js', 'pagemarks.js', 'math.js']) {
   fs.copyFileSync(path.join(root, 'src/core', shared), path.join(libDir, shared));
 }
 console.log('✔ footnotes.js, pagemarks.js, math.js (from src/core)');
+
+// The Word export: the CLI's writer and the core modules it needs, in one script.
+fs.writeFileSync(path.join(libDir, 'docx-export.js'), require('./bundle-docx').bundleDocx());
+console.log('✔ docx-export.js (Word writer from src/core, scripts/bundle-docx.js)');

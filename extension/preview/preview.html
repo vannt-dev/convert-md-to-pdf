@@ -15,6 +15,7 @@
   <script src="../lib/math.js"></script>
   <script src="../lib/marked.min.js"></script>
   <script src="../lib/footnotes.js"></script>
+  <script src="../lib/docx-export.js"></script>
   <script src="../lib/pagemarks.js"></script>
   <script src="../lib/highlight.min.js"></script>
   <script src="../lib/mermaid.min.js"></script>
@@ -33,6 +34,8 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px 12px;
       color: #f8fafc;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       box-shadow: 0 4px 12px rgba(0,0,0,0.15);
@@ -41,7 +44,17 @@
     .toolbar-left, .toolbar-right {
       display: flex;
       align-items: center;
-      gap: 12px;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+    }
+
+    .toolbar-right {
+      margin-left: auto;
+    }
+
+    /* Labels stay on one line; the toolbar takes a second row when it runs out of room. */
+    .toolbar-title, .print-tip, .btn-secondary-action, .btn-print {
+      white-space: nowrap;
     }
 
     .toolbar-title {
@@ -176,6 +189,9 @@
       <span class="print-tip" title="Untick 'Headers and footers' in the print dialog so the browser does not add the page URL and date">💡 Untick 'Headers and footers' when printing</span>
       <button id="btn-download-html" class="btn-secondary-action" title="Download a static HTML file">
         📥 Download HTML
+      </button>
+      <button id="btn-download-docx" class="btn-secondary-action" title="Download a Word document (.docx), written from the Markdown">
+        📝 Word (.docx)
       </button>
       <button id="btn-trigger-print" class="btn-print" title="Open the Save as PDF / Print dialog">
         🖨️ Save as PDF

@@ -53,15 +53,33 @@ document.addEventListener('DOMContentLoaded', () => {
           '\n</style>\n</head>\n<body>\n' + 
           contentEl.innerHTML + 
           '\n</body>\n</html>';
-        const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${title.replace(/[^\w\s-]/gi, '') || 'document'}.html`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        downloadFile(new Blob([fullHtml], { type: 'text/html;charset=utf-8' }), title, 'html');
+      });
+    }
+
+    // Word is written from the Markdown by the CLI's own writer (lib/docx-export.js), not from the
+    // preview: real headings, lists and tables. The theme, diagrams and formulas stay behind.
+    const btnDownloadDocx = document.getElementById('btn-download-docx');
+    if (btnDownloadDocx) {
+      btnDownloadDocx.addEventListener('click', async () => {
+        btnDownloadDocx.disabled = true;
+        try {
+          const images = await collectImages();
+          const bytes = await MdPdfDocx.exportDocx(markdownText, {
+            font: options.font,
+            pageSize: options.pageSize,
+            toc: !!options.toc,
+            cover: !!options.cover,
+            readImage: (src) => images.get(src) || images.get(encodeURI(src).replace(/%25/g, '%')) || null
+          });
+          const type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+          downloadFile(new Blob([bytes], { type }), title, 'docx');
+        } catch (err) {
+          console.error('Word export error:', err);
+          alert('Could not write the Word document: ' + err.message);
+        } finally {
+          btnDownloadDocx.disabled = false;
+        }
       });
     }
 
@@ -69,6 +87,55 @@ document.addEventListener('DOMContentLoaded', () => {
       window.print();
     });
   });
+
+  function downloadFile(blob, title, extension) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${title.replace(/[^\w\s-]/gi, '') || 'document'}.${extension}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // The pictures the preview shows, for the Word export, keyed by their address. Nothing is
+  // downloaded for it: a data: picture is decoded, and one the page has loaded from the extension
+  // itself is copied off a canvas. A web picture cannot be (the browser keeps the canvas closed
+  // to another site's picture), so like any picture left out it is named with its address.
+  async function collectImages() {
+    const images = new Map();
+    for (const img of contentEl.querySelectorAll('img')) {
+      const src = img.getAttribute('src');
+      if (!src || images.has(src)) continue;
+      try {
+        await img.decode();
+      } catch (_) {
+        continue; // Not loaded: a relative path, or an address that does not answer.
+      }
+      const size = { width: img.naturalWidth, height: img.naturalHeight };
+      if (!size.width || !size.height) continue;
+      const inline = /^data:image\/(png|jpeg|gif);base64,/i.exec(src);
+      if (inline) {
+        const binary = atob(src.slice(inline[0].length));
+        const data = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+        const type = inline[1].toLowerCase();
+        images.set(src, { data, extension: type === 'jpeg' ? 'jpg' : type, size });
+        continue;
+      }
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = size.width;
+        canvas.height = size.height;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+        if (blob) images.set(src, { data: new Uint8Array(await blob.arrayBuffer()), extension: 'png', size });
+      } catch (_) {
+        // Another site's picture: the canvas cannot be read.
+      }
+    }
+    return images;
+  }
 
   function renderDocument(markdownText, options) {
     // Apply CSS theme styles

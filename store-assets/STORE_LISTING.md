@@ -34,13 +34,14 @@ Markdown to PDF Converter is a lightweight, privacy-focused extension that trans
 • 📁 Multiple Input Methods: Drag & drop single or batch .md files, paste raw text, or convert active tab content automatically.
 • 🖱️ Right-Click Context Menu: Highlight any Markdown text on any website and right-click to convert to PDF immediately.
 • 🌐 GitHub Raw MD Integration: Displays an automatic floating "Convert to PDF" button on GitHub raw file pages.
+• 📝 Word Export: Download the document as a Word file (.docx) with real headings, lists and tables, ready to edit.
 • 🔒 100% Private & Offline: Runs entirely inside your browser. No registration, no cloud servers, and no data tracking.
 
 🚀 HOW TO USE:
 1. Click the extension icon in your toolbar.
 2. Drag & drop .md file(s) or paste your Markdown content.
 3. Select your desired theme (Modern, Dark, GitHub, Cyberpunk...) and font (Inter, Roboto, Lora...).
-4. Click "Preview & Export PDF" to view and print your vector PDF or download static HTML!
+4. Click "Preview & Export PDF" to view and print your vector PDF, or download static HTML or a Word (.docx) file!
 
 Perfect for developers, technical writers, students, engineers, and researchers!
 ```
@@ -61,13 +62,14 @@ Markdown to PDF Converter là tiện ích mở rộng nhẹ, an toàn bảo mậ
 • 📁 Đa dạng phương thức nhập: Kéo thả một hoặc nhiều file .md, dán văn bản thô hoặc tự động lấy nội dung trang web đang mở.
 • 🖱️ Menu chuột phải (Context Menu): Bôi đen văn bản Markdown trên trang web bất kỳ -> Chuột phải để chuyển sang PDF ngay lập tức.
 • 🌐 Tích hợp GitHub Raw File: Hỗ trợ nút bấm nổi "Convert to PDF" tiện lợi khi mở file .md raw trên GitHub.
+• 📝 Xuất file Word: Tải tài liệu về dạng file Word (.docx) với tiêu đề, danh sách và bảng thật, sửa tiếp được ngay.
 • 🔒 Bảo mật 100% Offline: Xử lý hoàn toàn cục bộ trên trình duyệt, không tải dữ liệu lên máy chủ bên ngoài.
 
 🚀 HƯỚNG DẪN SỬ DỤNG:
 1. Nhấn vào biểu tượng tiện ích trên thanh công cụ Chrome.
 2. Kéo thả file .md hoặc dán đoạn mã Markdown.
 3. Chọn Theme mong muốn (Modern, Dark, GitHub, Cyberpunk...) và font chữ.
-4. Nhấn "Preview & Export PDF" để xem trước và lưu file PDF hoặc tải file HTML!
+4. Nhấn "Preview & Export PDF" để xem trước và lưu file PDF, hoặc tải file HTML hay file Word (.docx)!
 ```
 
 ---
