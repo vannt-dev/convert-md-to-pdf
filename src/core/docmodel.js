@@ -2,7 +2,7 @@
 const { marked } = require('marked');
 const { parseFrontMatter } = require('./frontmatter');
 const { applyFootnotes } = require('./footnotes');
-const { preprocessMarkdown } = require('./utils');
+const { preprocessMarkdown } = require('./preprocess');
 
 /**
  * A format-neutral model of a Markdown document, for the exporters that do

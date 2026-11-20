@@ -15,7 +15,7 @@ const { pageMarksCss, pageMarkBoxes } = require('../src/core/pagemarks');
 const { convertMarkdownToPdf } = require('../src/core/index');
 const { expandIncludes } = require('../src/core/include');
 const { buildDocument, plainText } = require('../src/core/docmodel');
-const { createZip } = require('../src/core/zip');
+const { createZip, createZipAsync, crc32 } = require('../src/core/zip');
 const { markdownToDocx } = require('../src/core/docx');
 const { markdownToEpub } = require('../src/core/epub');
 const { fileUrlPath, readLocalImage } = require('../src/core/images');
@@ -1047,6 +1047,75 @@ Text`, { toc: true });
     assert.ok(read('word/_rels/document.xml.rels').includes('Target="https://example.com/?a=1&amp;b=2" TargetMode="External"'));
     assert.ok(read('docProps/core.xml').includes('<dc:creator>A &amp; B</dc:creator>'));
     assert.ok(read('[Content_Types].xml').includes('<Default Extension="png" ContentType="image/png"/>'));
+  });
+
+  test('zip.crc32: the same checksum as zlib', () => {
+    const zlib = require('zlib');
+    for (const sample of ['', 'a', 'x'.repeat(5000), 'tệp ✓']) {
+      const bytes = Buffer.from(sample, 'utf8');
+      assert.strictEqual(crc32(bytes), zlib.crc32(bytes), JSON.stringify(sample));
+    }
+  });
+
+  await asyncTest('zip.createZipAsync: a readable archive from an async deflate, stored entries kept as they are', async () => {
+    const AdmZip = require('adm-zip');
+    const zlib = require('zlib');
+    const archive = await createZipAsync(
+      [
+        { name: 'mimetype', data: 'application/epub+zip', store: true },
+        { name: 'folder/tệp.txt', data: 'x'.repeat(5000) },
+        { name: 'bytes.bin', data: new Uint8Array([1, 2, 3]) }
+      ],
+      async bytes => zlib.deflateRawSync(bytes)
+    );
+    assert.ok(archive instanceof Uint8Array);
+    const entries = new AdmZip(Buffer.from(archive)).getEntries();
+    assert.deepStrictEqual(entries.map(entry => entry.entryName), ['mimetype', 'folder/tệp.txt', 'bytes.bin']);
+    assert.strictEqual(entries[0].header.method, 0);
+    assert.strictEqual(entries[1].getData().toString('utf8'), 'x'.repeat(5000));
+    assert.deepStrictEqual([...entries[2].getData()], [1, 2, 3]);
+  });
+
+  // The extension's Word export runs the core writer in the page, with no Node at hand.
+  const extensionRoot = path.join(__dirname, '..', 'extension');
+  function loadExtensionDocx() {
+    const vm = require('vm');
+    const context = vm.createContext({ TextEncoder, CompressionStream, console });
+    for (const file of ['lib/marked.min.js', 'lib/docx-export.js']) {
+      vm.runInContext(fs.readFileSync(path.join(extensionRoot, file), 'utf8'), context, { filename: file });
+    }
+    return context;
+  }
+
+  test('extension: ships the Word writer bundled from src/core, up to date', () => {
+    const { bundleDocx } = require('../scripts/bundle-docx');
+    assert.strictEqual(
+      fs.readFileSync(path.join(extensionRoot, 'lib/docx-export.js'), 'utf8'),
+      bundleDocx(),
+      'extension/lib/docx-export.js is out of date: run `npm run fetch:libs`'
+    );
+    const page = fs.readFileSync(path.join(extensionRoot, 'preview/preview.html'), 'utf8');
+    assert.ok(page.indexOf('<script src="../lib/marked.min.js"></script>') < page.indexOf('<script src="../lib/docx-export.js"></script>'));
+    assert.ok(page.includes('id="btn-download-docx"'));
+    assert.ok(fs.readFileSync(path.join(extensionRoot, 'preview/preview.js'), 'utf8').includes('MdPdfDocx.exportDocx('));
+  });
+
+  await asyncTest('extension: the Word export in the page writes the same document as the CLI', async () => {
+    const AdmZip = require('adm-zip');
+    const context = loadExtensionDocx();
+    for (const name of ['require', 'module', 'Buffer', 'process']) assert.strictEqual(typeof context[name], 'undefined', name);
+    const options = { toc: true, cover: true, pageSize: 'Letter', orientation: 'landscape' };
+    // The page hands over the pictures it has; here, the ones the CLI would read.
+    const readImage = src => readLocalImage(src, exportDir);
+    const fromPage = new AdmZip(Buffer.from(await context.MdPdfDocx.exportDocx(exportSource, { ...options, readImage })));
+    const fromCli = new AdmZip(markdownToDocx(exportSource, { ...options, baseDir: exportDir }));
+    const names = fromCli.getEntries().map(entry => entry.entryName);
+    assert.deepStrictEqual(fromPage.getEntries().map(entry => entry.entryName), names);
+    for (const name of names) assert.ok(fromPage.readFile(name).equals(fromCli.readFile(name)), name);
+
+    // Without pictures it still works, and names the picture as the CLI does for a web one.
+    const bare = new AdmZip(Buffer.from(await context.MdPdfDocx.exportDocx('# T\n\n![Pic](pic.png)\n')));
+    assert.ok(bare.readAsText('word/document.xml').includes('[Pic (pic.png)]'));
   });
 
   test('epub.markdownToEpub: an EPUB 3 package split into chapters of well-formed XHTML', () => {
