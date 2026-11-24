@@ -1,5 +1,6 @@
 /*! SPDX-License-Identifier: MIT | Copyright (c) 2026 Van Nguyen | github.com/vannt-dev/convert-md-to-pdf */
 const { docxEntries } = require('./docx');
+const { buildDocument, collectMedia, mediaLookup } = require('./docmodel');
 const { createZipAsync } = require('./zip');
 
 /**
@@ -39,10 +40,22 @@ async function deflateRaw(bytes) {
 }
 
 /**
+ * The Mermaid diagrams and formulas a document has, for the page to draw before the export
+ * (extension/lib/media.js renderMedia), then hand over with mediaLookup as `options.media`.
+ * @param {string} rawMarkdown
+ * @param {Object} [options] The converter's options (`katex: false` and `mermaid: false` leave them out)
+ * @returns {{ diagrams: string[], formulas: { tex: string, display: boolean }[] }}
+ */
+function mediaJobs(rawMarkdown, options = {}) {
+  return collectMedia(buildDocument(rawMarkdown, options).blocks);
+}
+
+/**
  * Converts Markdown to the bytes of a .docx file, in the browser.
  * @param {string} rawMarkdown
  * @param {Object} [options] The converter's options (pageSize, font, toc, cover, ...), plus
- *   `readImage(src)`: the picture an address names, as `{ data, extension, size }`, or null
+ *   `readImage(src)`: the picture an address names, as `{ data, extension, size }`, or null, and
+ *   `media`: the drawn diagrams and formulas (mediaLookup)
  * @returns {Promise<Uint8Array>}
  */
 function exportDocx(rawMarkdown, options = {}) {
@@ -51,5 +64,7 @@ function exportDocx(rawMarkdown, options = {}) {
 }
 
 module.exports = {
-  exportDocx
+  exportDocx,
+  mediaJobs,
+  mediaLookup
 };

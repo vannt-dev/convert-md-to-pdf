@@ -119,8 +119,10 @@
    * Takes the math out of Markdown source, so that the Markdown parser cannot change it.
    * Fenced code and code spans are not searched.
    * @param {string} markdown
-   * @returns {{ text: string, restore: (html: string) => string }} the Markdown to parse, and
-   *   the function that puts the formulas into the HTML made from it
+   * @returns {{ text: string, restore: (html: string) => string, formulas: object[] }} the
+   *   Markdown to parse, the function that puts the formulas into the HTML made from it, and
+   *   what each stand-in holds (`{ tex, display, raw }`, or `{ raw, dollar }` for a `\$`), for
+   *   the writers that read the Markdown without HTML (Word, EPUB)
    */
   function protectMath(markdown) {
     const source = String(markdown || '');
@@ -160,7 +162,7 @@
       pos = end;
     });
     text += prose(source.slice(pos));
-    return { text, restore: (html) => restoreMath(html, kept) };
+    return { text, restore: (html) => restoreMath(html, kept), formulas: kept };
   }
 
   function escapeText(text) {
