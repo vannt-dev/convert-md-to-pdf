@@ -94,9 +94,9 @@ jobs:
           # Re-running an older tag must not take "Latest" from a newer release
           make_latest: legacy
           overwrite_files: true
-          files: |
-            dist/extension-*.zip
-            dist/extension-latest.zip
+          # One pattern: extension-latest.zip already matches it, and naming it twice uploaded it
+          # twice at once, which failed the v2.10.0 run.
+          files: dist/extension-*.zip
 
   npm:
     name: Publish to npm
