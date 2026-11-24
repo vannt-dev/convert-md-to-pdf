@@ -187,6 +187,7 @@ program
           }
 
           result.includedFiles.forEach(includedFile => importedFiles.add(includedFile));
+          (result.warnings || []).forEach(warning => console.error(`   \x1b[33m⚠ Warning:\x1b[0m ${warning}`));
           const outPathDisplay = result.outputPath;
           console.log(`   \x1b[32m✔ File saved:\x1b[0m ${outPathDisplay}`);
           count++;

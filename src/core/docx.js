@@ -1,6 +1,7 @@
 /*! SPDX-License-Identifier: MIT | Copyright (c) 2026 Van Nguyen | github.com/vannt-dev/convert-md-to-pdf */
 const { buildDocument, collectHeadings, isPortableLink, plainText } = require('./docmodel');
 const { readLocalImage } = require('./images');
+const { mathmlToOmml } = require('./omml');
 const { createZip } = require('./zip');
 
 /**
@@ -8,14 +9,17 @@ const { createZip } = require('./zip');
  * HTML: headings, lists, tables, code and quotes become real Word styles and
  * structures, which a reader can restyle, instead of formatted lookalikes.
  *
- * Not carried over: themes and custom CSS, Mermaid diagrams (kept as their
- * source), and LaTeX math (kept as typed). Images are embedded when they are
- * local PNG, JPEG or GIF files; any other image is named with its address.
+ * Mermaid diagrams become pictures and LaTeX formulas Word equations when
+ * `options.media` has them drawn (see docmodel's collectMedia and mediaLookup);
+ * without it a diagram is kept as its source and a formula as typed. Themes and
+ * custom CSS are not carried over. Images are embedded when they are local PNG,
+ * JPEG or GIF files; any other image is named with its address.
  */
 
 const TWIPS_PER_MM = 1440 / 25.4;
 const EMU_PER_PIXEL = 9525;
 const EMU_PER_TWIP = 635;
+const NO_MEDIA = { diagram: () => null, formula: () => null };
 const PAGE_SIZES = { A4: [11906, 16838], LETTER: [12240, 15840], A3: [16838, 23811], LEGAL: [12240, 20160] };
 const HEADING_SIZES = [36, 30, 26, 24, 22, 22];
 const CODE_FONT = 'Consolas';
@@ -49,11 +53,13 @@ function bookmarkName(id) {
 }
 
 class DocxWriter {
-  constructor(document, readImage) {
+  constructor(document, readImage, media = NO_MEDIA) {
     this.document = document;
     this.readImage = readImage;
+    this.media = media;
     this.relationships = [];
-    this.media = [];
+    // The files of word/media/.
+    this.files = [];
     this.orderedLists = [];
     this.bookmarks = new Map();
     this.drawingId = 0;
@@ -64,6 +70,7 @@ class DocxWriter {
     this.page = { width: landscape ? height : width, height: landscape ? width : height, landscape };
     this.margins = parseMargins(settings.margin);
     this.contentWidth = this.page.width - this.margins.left - this.margins.right;
+    this.contentHeight = this.page.height - this.margins.top - this.margins.bottom;
 
     // Bookmark names are cut to Word's limit, so two long headings could collide.
     const taken = new Set();
@@ -104,6 +111,13 @@ class DocxWriter {
     return `<w:r>${this.runProperties(run, extra)}${pieces.join('')}</w:r>`;
   }
 
+  /** A formula in the text: a Word equation when it was drawn, else the text it was typed as. */
+  mathRun(run, extra = '') {
+    const math = this.media.formula(run.math.tex, run.math.display);
+    if (!math) return this.textRun({ ...run, text: run.math.raw }, extra);
+    return mathmlToOmml(math, false);
+  }
+
   imageRun(run) {
     const image = this.readImage(run.image.src);
     if (!image || !image.size || !['png', 'jpg', 'gif'].includes(image.extension)) {
@@ -111,21 +125,25 @@ class DocxWriter {
       const label = run.image.alt ? `${run.image.alt} (${run.image.src})` : run.image.src;
       return this.textRun({ text: `[${label}]`, italic: true });
     }
-    const name = `image${this.media.length + 1}.${image.extension}`;
-    this.media.push({ name, data: image.data });
+    return this.drawing(image, run.image.alt);
+  }
+
+  /** A picture in the text, at its own size or shrunk to fit the page. */
+  drawing(image, description) {
+    const name = `image${this.files.length + 1}.${image.extension}`;
+    this.files.push({ name, data: image.data });
     const relationshipId = this.relationship(
       'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image',
       `media/${name}`
     );
-    const maxWidth = this.contentWidth * EMU_PER_TWIP;
     let cx = image.size.width * EMU_PER_PIXEL;
     let cy = image.size.height * EMU_PER_PIXEL;
-    if (cx > maxWidth) {
-      cy = Math.round(cy * (maxWidth / cx));
-      cx = maxWidth;
-    }
+    const fit = Math.min(1, (this.contentWidth * EMU_PER_TWIP) / cx, (this.contentHeight * EMU_PER_TWIP) / cy);
+    cx = Math.round(cx * fit);
+    cy = Math.round(cy * fit);
     const id = ++this.drawingId;
-    const alt = xml(run.image.alt || name);
+    // Line breaks kept, so a diagram's source reads as it was written.
+    const alt = xml(description || name).replace(/\r?\n/g, '&#10;');
     return (
       '<w:r><w:drawing>' +
       `<wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/>` +
@@ -141,8 +159,17 @@ class DocxWriter {
     );
   }
 
-  /** Runs, with neighbouring runs of one link wrapped in a single hyperlink. */
-  runs(runs) {
+  /**
+   * Runs, with neighbouring runs of one link wrapped in a single hyperlink.
+   * @param {Object[]} runs
+   * @param {string} [align] Set when the runs are all their paragraph holds, and how it is aligned
+   */
+  runs(runs, align) {
+    const only = runs.length === 1 && runs[0].math && !runs[0].href ? runs[0].math : null;
+    const formula = only && align ? this.media.formula(only.tex, only.display) : null;
+    // Word shows a formula that is all its paragraph holds as an equation of its own, centred;
+    // said so, it keeps the place the text would have.
+    if (formula) return mathmlToOmml(formula, true, align);
     let output = '';
     for (let index = 0; index < runs.length; ) {
       const href = runs[index].href;
@@ -153,6 +180,7 @@ class DocxWriter {
         .map(run => {
           if (run.lineBreak) return '<w:r><w:br/></w:r>';
           if (run.image) return this.imageRun(run);
+          if (run.math) return this.mathRun(run, href ? '<w:rStyle w:val="Hyperlink"/>' : '');
           return this.textRun(run, href ? '<w:rStyle w:val="Hyperlink"/>' : '');
         })
         .join('');
@@ -214,7 +242,7 @@ class DocxWriter {
         case 'paragraph': {
           const marker = takeNumbering();
           const prefix = marker && marker.checkbox ? this.textRun({ text: `${marker.checkbox} ` }) : '';
-          output += this.paragraph(prefix + this.runs(block.runs), {
+          output += this.paragraph(prefix + this.runs(block.runs, prefix ? undefined : 'left'), {
             style: context.quote > 0 ? 'Quote' : undefined,
             numbering: marker ? { id: marker.id, level: context.list } : undefined,
             indent: marker ? { left: base, hanging: 360 } : plainIndent
@@ -231,6 +259,23 @@ class DocxWriter {
           }
           // Two code blocks in a row would otherwise merge into one shaded box.
           output += this.paragraph('', { style: 'CodeSpacer' });
+          break;
+        }
+        case 'diagram': {
+          const image = this.media.diagram(block.text);
+          if (!image) {
+            output += this.blocks([{ type: 'code', lang: 'mermaid', text: block.text }], { ...context, numbering: null });
+            break;
+          }
+          // The description is the diagram's source: what a screen reader can tell of it.
+          output += this.paragraph(this.drawing(image, block.text.trim()), { style: 'Figure', indent: plainIndent });
+          break;
+        }
+        case 'math': {
+          const math = this.media.formula(block.tex, true);
+          output += math
+            ? this.paragraph(mathmlToOmml(math, true), { indent: plainIndent })
+            : this.paragraph(this.textRun({ text: block.raw }), { indent: plainIndent });
           break;
         }
         case 'quote':
@@ -279,7 +324,7 @@ class DocxWriter {
         `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/>` +
         (header ? '<w:shd w:val="clear" w:color="auto" w:fill="F2F2F2"/>' : '') +
         `</w:tcPr><w:p><w:pPr><w:pStyle w:val="TableText"/>${align ? `<w:jc w:val="${align}"/>` : ''}</w:pPr>` +
-        `${this.runs(runs)}</w:p></w:tc>`
+        `${this.runs(runs, align || 'left')}</w:p></w:tc>`
       );
     };
     const row = (cells, header) =>
@@ -333,7 +378,8 @@ class DocxWriter {
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
       'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +
-      'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">' +
+      'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" ' +
+      'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">' +
       `<w:body>${body}<w:sectPr>` +
       `<w:pgSz w:w="${page.width}" w:h="${page.height}"${page.landscape ? ' w:orient="landscape"' : ''}/>` +
       `<w:pgMar w:top="${margins.top}" w:right="${margins.right}" w:bottom="${margins.bottom}" w:left="${margins.left}" w:header="708" w:footer="708" w:gutter="0"/>` +
@@ -378,6 +424,7 @@ class DocxWriter {
         `<w:rFonts w:ascii="${CODE_FONT}" w:hAnsi="${CODE_FONT}" w:cs="${CODE_FONT}"/><w:sz w:val="19"/><w:szCs w:val="19"/>`
       ) +
       paragraphStyle('CodeSpacer', 'Code Spacer', '<w:spacing w:after="0" w:line="120" w:lineRule="exact"/>', '<w:sz w:val="8"/>') +
+      paragraphStyle('Figure', 'Figure', '<w:spacing w:before="120" w:after="200"/><w:jc w:val="center"/>', '') +
       paragraphStyle('TableText', 'Table Text', '<w:spacing w:before="40" w:after="40"/>', '') +
       paragraphStyle('Rule', 'Rule', '<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="BFBFBF"/></w:pBdr><w:spacing w:after="240"/>', '') +
       paragraphStyle('ContentsTitle', 'Contents Title', '<w:spacing w:before="240" w:after="120"/>', '<w:b/><w:sz w:val="28"/><w:szCs w:val="28"/>') +
@@ -420,7 +467,7 @@ class DocxWriter {
     this.relationship('http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles', 'styles.xml');
     this.relationship('http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering', 'numbering.xml');
 
-    const extensions = [...new Set(this.media.map(file => file.name.split('.').pop()))];
+    const extensions = [...new Set(this.files.map(file => file.name.split('.').pop()))];
     const imageTypes = { png: 'image/png', jpg: 'image/jpeg', gif: 'image/gif' };
     const contentTypes =
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -465,7 +512,7 @@ class DocxWriter {
       { name: 'word/styles.xml', data: this.stylesXml() },
       { name: 'word/numbering.xml', data: numberingXml },
       { name: 'word/_rels/document.xml.rels', data: documentRels },
-      ...this.media.map(file => ({ name: `word/media/${file.name}`, data: file.data, store: true }))
+      ...this.files.map(file => ({ name: `word/media/${file.name}`, data: file.data, store: true }))
     ];
   }
 }
@@ -483,12 +530,13 @@ function decodeURIComponentSafe(value) {
  * @param {string} rawMarkdown
  * @param {Object} [options] The converter's options, plus `baseDir`: the folder images are relative to,
  *   or `readImage(src)`: how to get an image instead of reading a local file (the browser extension
- *   hands over the pictures its page has), returning what `readLocalImage` returns, or null
+ *   hands over the pictures its page has), returning what `readLocalImage` returns, or null;
+ *   and `media`: the diagrams and formulas drawn beforehand (docmodel's mediaLookup)
  * @returns {{ name: string, data: Uint8Array | string, store?: boolean }[]}
  */
 function docxEntries(rawMarkdown, options = {}) {
   const readImage = options.readImage || (src => readLocalImage(src, options.baseDir));
-  return new DocxWriter(buildDocument(rawMarkdown, options), readImage).entries();
+  return new DocxWriter(buildDocument(rawMarkdown, options), readImage, options.media || NO_MEDIA).entries();
 }
 
 /**

@@ -58,18 +58,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Word is written from the Markdown by the CLI's own writer (lib/docx-export.js), not from the
-    // preview: real headings, lists and tables. The theme, diagrams and formulas stay behind.
+    // preview: real headings, lists and tables. Diagrams become pictures and formulas Word
+    // equations, drawn here with the bundled Mermaid and KaTeX (lib/media.js); the theme stays behind.
     const btnDownloadDocx = document.getElementById('btn-download-docx');
     if (btnDownloadDocx) {
       btnDownloadDocx.addEventListener('click', async () => {
         btnDownloadDocx.disabled = true;
         try {
           const images = await collectImages();
-          const bytes = await MdPdfDocx.exportDocx(markdownText, {
+          const exportOptions = {
             font: options.font,
             pageSize: options.pageSize,
             toc: !!options.toc,
             cover: !!options.cover,
+            mermaid: options.mermaid !== false && typeof mermaid !== 'undefined',
+            katex: options.katex !== false && typeof katex !== 'undefined'
+          };
+          const jobs = MdPdfDocx.mediaJobs(markdownText, exportOptions);
+          const drawn = await MdPdfMedia.renderMedia(jobs, {
+            mermaid: typeof mermaid !== 'undefined' ? mermaid : null,
+            katex: typeof katex !== 'undefined' ? katex : null
+          });
+          const bytes = await MdPdfDocx.exportDocx(markdownText, {
+            ...exportOptions,
+            media: MdPdfDocx.mediaLookup(jobs, drawn),
             readImage: (src) => images.get(src) || images.get(encodeURI(src).replace(/%25/g, '%')) || null
           });
           const type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';

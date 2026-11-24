@@ -1161,6 +1161,199 @@ Text`, { toc: true });
     assert.ok(read('OEBPS/toc.ncx').includes('<navPoint id="nav-2" playOrder="2">'));
   });
 
+  // Diagrams and formulas in Word and EPUB. What the page would draw is stood in for here: KaTeX
+  // (from node_modules) writes the MathML, and the 2 x 3 PNG is the picture of every diagram.
+  const katexLib = require('katex');
+  const { collectMedia, mediaLookup } = require('../src/core/docmodel');
+  const { parseMathml, serializeMathml, mathmlToOmml } = require('../src/core/omml');
+  const mediaSource = [
+    '# Drawn',
+    '',
+    '```mermaid',
+    'flowchart LR',
+    '  A[Start] --> B{Ok?}',
+    '```',
+    '',
+    String.raw`Inline $E = mc^2$ and $\alpha_1$, a price of $5, \$x\$ and ` + '`$code$`.',
+    '',
+    '$$',
+    String.raw`\sum_{i=1}^{n} i^2 = \frac{n(n+1)(2n+1)}{6}`,
+    '$$',
+    '',
+    '| Name | Formula |',
+    '| --- | :-: |',
+    String.raw`| Area | $\pi r^2$ |`,
+    ''
+  ].join('\n');
+  const drawFor = (jobs, { failDiagrams = false } = {}) => ({
+    diagrams: jobs.diagrams.map(() => (failDiagrams ? { error: 'Parse error' } : { png: png.toString('base64'), width: 640, height: 200 })),
+    formulas: jobs.formulas.map(formula => ({
+      mathml: katexLib.renderToString(formula.tex, { output: 'mathml', displayMode: formula.display, throwOnError: true })
+    }))
+  });
+
+  test('docmodel: Mermaid code is a diagram and formulas are math, as typed in code', () => {
+    const { blocks } = buildDocument(mediaSource, {});
+    assert.deepStrictEqual(blocks[1], { type: 'diagram', text: 'flowchart LR\n  A[Start] --> B{Ok?}' });
+    const runs = blocks[2].runs;
+    assert.deepStrictEqual(runs[1], { math: { tex: 'E = mc^2', display: false, raw: '$E = mc^2$' } });
+    assert.strictEqual(runs[3].math.tex, String.raw`\alpha_1`, 'the underscore is not emphasis');
+    assert.strictEqual(runs[4].text, ', a price of $5, $x$ and ');
+    assert.deepStrictEqual(runs[5], { text: '$code$', code: true });
+    assert.deepStrictEqual(blocks[3], {
+      type: 'math',
+      tex: String.raw`\sum_{i=1}^{n} i^2 = \frac{n(n+1)(2n+1)}{6}`,
+      raw: '$$\n' + String.raw`\sum_{i=1}^{n} i^2 = \frac{n(n+1)(2n+1)}{6}` + '\n$$'
+    });
+    assert.ok(blocks[4].rows[0][1].runs[0].math, 'a formula in a table cell');
+
+    const jobs = collectMedia(blocks);
+    assert.deepStrictEqual(jobs.diagrams, ['flowchart LR\n  A[Start] --> B{Ok?}']);
+    assert.deepStrictEqual(jobs.formulas.map(formula => `${formula.display}:${formula.tex}`), [
+      'false:E = mc^2', String.raw`false:\alpha_1`, String.raw`true:\sum_{i=1}^{n} i^2 = \frac{n(n+1)(2n+1)}{6}`, String.raw`false:\pi r^2`
+    ]);
+    // `--no-katex` and `--no-mermaid` keep them as text and code, as before.
+    const off = buildDocument(mediaSource, { katex: false, mermaid: false }).blocks;
+    assert.strictEqual(off[1].type, 'code');
+    assert.ok(!JSON.stringify(off).includes('"math"'));
+    assert.deepStrictEqual(collectMedia(off), { diagrams: [], formulas: [] });
+  });
+
+  test('omml: KaTeX MathML becomes Office Math, and clean MathML for EPUB', () => {
+    const omml = (tex, display = false) =>
+      mathmlToOmml(parseMathml(katexLib.renderToString(tex, { output: 'mathml', displayMode: display })), display);
+    const wrapped = body => `<w:p xmlns:w="w" xmlns:m="m">${body}</w:p>`;
+    const cases = {
+      [String.raw`\frac{a}{b}`]: '<m:f><m:num>',
+      [String.raw`\binom{n}{k}`]: '<m:type m:val="noBar"/>',
+      [String.raw`\sqrt{x}`]: '<m:degHide m:val="1"/>',
+      [String.raw`\sqrt[3]{x}`]: '<m:deg><m:r>',
+      'x^2': '<m:sSup>',
+      'x_i': '<m:sSub>',
+      'x_i^2': '<m:sSubSup>',
+      [String.raw`\left(\alpha\right)`]: '<m:d><m:dPr><m:begChr m:val="("/><m:endChr m:val=")"/>',
+      [String.raw`\hat{x}`]: '<m:acc><m:accPr><m:chr m:val="̂"/>',
+      [String.raw`\overline{AB}`]: '<m:bar><m:barPr><m:pos m:val="top"/>',
+      [String.raw`\sin x`]: '<m:func><m:fName>',
+      [String.raw`\mathbb{R}`]: '<m:scr m:val="double-struck"/>',
+      [String.raw`\begin{pmatrix}a&b\\c&d\end{pmatrix}`]: '<m:m><m:mPr><m:mcs>',
+      [String.raw`\text{if } x`]: '<m:rPr><m:nor/></m:rPr>'
+    };
+    for (const [tex, expected] of Object.entries(cases)) {
+      const out = omml(tex);
+      assert.ok(out.includes(expected), `${tex}: ${out}`);
+      assertWellFormed(wrapped(out), tex);
+    }
+    // A sum takes the term after it as its body, with its limits under and over in display.
+    const sum = omml(String.raw`\sum_{i=1}^{n} x_i = 1`, true);
+    assert.ok(sum.startsWith('<m:oMathPara><m:oMathParaPr><m:jc m:val="center"/></m:oMathParaPr><m:oMath><m:nary>'), sum);
+    assert.ok(/<m:chr m:val="∑"\/><m:limLoc m:val="undOvr"\/>.*<\/m:sup><m:e><m:sSub>.*<\/m:e><\/m:nary><m:r>.*=/.test(sum), sum);
+    assert.ok(omml(String.raw`\int_0^1 f(x)\,dx`).includes('<m:limLoc m:val="subSup"/>'));
+    // A one-letter name is italic, a longer one upright.
+    assert.ok(omml('x').includes('<m:r><w:rPr>'));
+    assert.ok(omml(String.raw`\operatorname{rank}`).includes('<m:sty m:val="p"/>'));
+
+    const math = parseMathml(katexLib.renderToString('a < b', { output: 'mathml' }));
+    const xhtml = serializeMathml(math, true);
+    assert.ok(xhtml.startsWith('<math xmlns="http://www.w3.org/1998/Math/MathML" display="block" alttext="a &lt; b">'), xhtml);
+    assertWellFormed(xhtml, 'MathML');
+    assert.strictEqual(parseMathml('<span>no math</span>'), null);
+    assert.strictEqual(parseMathml('<math><mi>x</mo></math>'), null, 'not well formed');
+  });
+
+  test('docx: drawn diagrams are pictures and formulas Word equations, with valid relationships', () => {
+    const AdmZip = require('adm-zip');
+    const jobs = collectMedia(buildDocument(mediaSource, {}).blocks);
+    const media = mediaLookup(jobs, drawFor(jobs));
+    const zip = new AdmZip(markdownToDocx(mediaSource, { media }));
+    const document = zip.readAsText('word/document.xml');
+    const rels = zip.readAsText('word/_rels/document.xml.rels');
+    assertWellFormed(document, 'document.xml');
+    assertWellFormed(rels, 'document.xml.rels');
+
+    // The picture part, its content type and the relationship the drawing points at.
+    assert.ok(zip.getEntry('word/media/image1.png').getData().equals(png));
+    assert.ok(zip.readAsText('[Content_Types].xml').includes('<Default Extension="png" ContentType="image/png"/>'));
+    const relations = new Map([...rels.matchAll(/<Relationship Id="([^"]+)" Type="([^"]+)" Target="([^"]+)"/g)].map(m => [m[1], { type: m[2], target: m[3] }]));
+    assert.strictEqual(relations.size, [...rels.matchAll(/<Relationship /g)].length, 'relationship ids are unique');
+    const embeds = [...document.matchAll(/r:(?:embed|id)="([^"]+)"/g)].map(m => m[1]);
+    assert.deepStrictEqual(embeds, ['rId1']);
+    for (const id of embeds) {
+      const relation = relations.get(id);
+      assert.ok(relation, `${id} is a relationship`);
+      assert.ok(relation.type.endsWith('/relationships/image'));
+      assert.ok(zip.getEntry(`word/${relation.target}`), `${relation.target} is in the package`);
+    }
+    // Shown at its own size (640 x 200 px) on a paragraph of its own, described by its source.
+    assert.ok(document.includes(`<wp:extent cx="${640 * 9525}" cy="${200 * 9525}"/>`));
+    assert.ok(document.includes('<w:p><w:pPr><w:pStyle w:val="Figure"/></w:pPr><w:r><w:drawing>'));
+    assert.ok(document.includes('descr="flowchart LR&#10;  A[Start] --&gt; B{Ok?}"'), 'line breaks kept');
+    assert.ok(!document.includes('A[Start]</w:t>'), 'the source is not written out as code');
+
+    // Equations: in the text, on a line of their own, and alone in a table cell (aligned as the column).
+    assert.ok(document.includes('xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"'));
+    assert.ok(/Inline <\/w:t><\/w:r><m:oMath>.*?<m:t xml:space="preserve">E<\/m:t>/.test(document));
+    assert.ok(document.includes('<m:oMathPara><m:oMathParaPr><m:jc m:val="center"/></m:oMathParaPr><m:oMath><m:nary>'));
+    assert.ok(/<w:jc w:val="center"\/><\/w:pPr><m:oMathPara><m:oMathParaPr><m:jc m:val="center"\/>/.test(document), 'cell');
+    assert.ok(document.includes('a price of $5, $x$ and '));
+    assert.strictEqual((document.match(/<m:oMath>/g) || []).length, 4);
+
+    // A diagram that could not be drawn stays as its source; a formula without MathML as typed.
+    const failed = new AdmZip(markdownToDocx(mediaSource, { media: mediaLookup(jobs, drawFor(jobs, { failDiagrams: true })) }));
+    assert.ok(!failed.getEntry('word/media/image1.png'));
+    const bare = new AdmZip(markdownToDocx(mediaSource)).readAsText('word/document.xml');
+    assert.ok(bare.includes('<w:pStyle w:val="CodeBlock"/></w:pPr><w:r><w:t xml:space="preserve">flowchart LR</w:t>'));
+    assert.ok(bare.includes('>$E = mc^2$</w:t>') && bare.includes('>$\\alpha_1$</w:t>') && !bare.includes('<m:oMath>'));
+  });
+
+  test('epub: drawn diagrams are pictures and formulas MathML', () => {
+    const AdmZip = require('adm-zip');
+    const jobs = collectMedia(buildDocument(mediaSource, {}).blocks);
+    const zip = new AdmZip(markdownToEpub(mediaSource, { media: mediaLookup(jobs, drawFor(jobs)) }));
+    const chapter = zip.readAsText('OEBPS/chapter-1.xhtml');
+    assertWellFormed(chapter, 'chapter-1.xhtml');
+    assert.ok(zip.getEntry('OEBPS/images/diagram-1.png').getData().equals(png));
+    const opf = zip.readAsText('OEBPS/content.opf');
+    assert.ok(opf.includes('<item id="chapter-1" href="chapter-1.xhtml" media-type="application/xhtml+xml" properties="mathml"/>'));
+    assert.ok(opf.includes('<item id="image-1" href="images/diagram-1.png" media-type="image/png"/>'));
+    assert.ok(chapter.includes('<figure class="diagram"><img src="images/diagram-1.png" width="640" alt="flowchart LR&#10;  A[Start] --&gt; B{Ok?}"/></figure>'));
+    assert.ok(chapter.includes('Inline <math xmlns="http://www.w3.org/1998/Math/MathML" alttext="E = mc^2"><semantics>'));
+    assert.ok(chapter.includes('<div class="math"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"'));
+    // Without them drawn: the source as code and the formulas as typed, and no MathML flag.
+    const bare = new AdmZip(markdownToEpub(mediaSource));
+    assert.ok(!bare.readAsText('OEBPS/content.opf').includes('properties="mathml"'));
+    assert.ok(bare.readAsText('OEBPS/chapter-1.xhtml').includes('<p>Inline $E = mc^2$'));
+  });
+
+  await asyncTest('extension: the Word export draws formulas with lib/media.js and matches the CLI', async () => {
+    const AdmZip = require('adm-zip');
+    assert.strictEqual(
+      fs.readFileSync(path.join(extensionRoot, 'lib/media.js'), 'utf8'),
+      fs.readFileSync(path.join(__dirname, '..', 'src/core/media.js'), 'utf8'),
+      'extension/lib/media.js is out of date: run `npm run fetch:libs`'
+    );
+    const page = fs.readFileSync(path.join(extensionRoot, 'preview/preview.html'), 'utf8');
+    assert.ok(page.indexOf('<script src="../lib/mermaid.min.js"></script>') < page.indexOf('<script src="../lib/media.js"></script>'));
+    assert.ok(fs.readFileSync(path.join(extensionRoot, 'preview/preview.js'), 'utf8').includes('MdPdfMedia.renderMedia('));
+
+    // The page's script, with KaTeX: formulas only, since a diagram needs a real canvas.
+    const context = loadExtensionDocx();
+    context.atob = atob;
+    const vm = require('vm');
+    vm.runInContext(fs.readFileSync(path.join(extensionRoot, 'lib/media.js'), 'utf8'), context, { filename: 'lib/media.js' });
+    const source = mediaSource.replace(/```mermaid[\s\S]*?```\n/, '');
+    const jobs = context.MdPdfDocx.mediaJobs(source, {});
+    const drawn = await context.MdPdfMedia.renderMedia(jobs, { katex: katexLib, mermaid: null, document: {} });
+    assert.strictEqual(drawn.formulas.length, 4);
+    const fromPage = new AdmZip(Buffer.from(await context.MdPdfDocx.exportDocx(source, { media: context.MdPdfDocx.mediaLookup(jobs, drawn) })));
+    const fromCli = new AdmZip(markdownToDocx(source, { media: mediaLookup(collectMedia(buildDocument(source, {}).blocks), drawFor(jobs)) }));
+    assert.strictEqual(fromPage.readAsText('word/document.xml'), fromCli.readAsText('word/document.xml'));
+    assert.ok(fromPage.readAsText('word/document.xml').includes('<m:oMathPara>'));
+    // Without Mermaid loaded a diagram is reported, not thrown.
+    const missing = await context.MdPdfMedia.renderMedia({ diagrams: ['flowchart LR'], formulas: [] }, { document: {} });
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(missing)), { diagrams: [{ error: 'Mermaid is not loaded' }], formulas: [] });
+  });
+
   test('images: a file:// address finds the picture on macOS, Linux and Windows alike', () => {
     // The two forms, read the same way on any system.
     assert.strictEqual(fileUrlPath('file:///home/u/my%20pic.png', false), '/home/u/my pic.png');
@@ -1193,6 +1386,8 @@ Text`, { toc: true });
     for (const [format, signature] of [['docx', '[Content_Types].xml'], ['epub', 'mimetype']]) {
       const result = await convertMarkdownToPdf(source, null, { format });
       assert.strictEqual(result.outputPath, path.join(exportDir, `book.${format}`));
+      // Nothing to draw: no browser is started, and nothing to warn about.
+      assert.deepStrictEqual(result.warnings, []);
       const bytes = fs.readFileSync(result.outputPath);
       assert.strictEqual(bytes.readUInt32LE(0), 0x04034b50);
       assert.strictEqual(bytes.toString('ascii', 30, 30 + signature.length), signature);
@@ -1201,6 +1396,51 @@ Text`, { toc: true });
     }
     await assert.rejects(convertMarkdownToPdf(source, null, { format: 'odt' }), /Unknown output format "odt"/);
     fs.rmSync(exportDir, { recursive: true, force: true });
+  });
+
+  await asyncTest('core.convertMarkdownToPdf: Word and EPUB get Mermaid and math drawn by the headless browser', async () => {
+    const { findBrowserExecutable } = require('../src/browser/renderer');
+    const { imageSize } = require('../src/core/images');
+    if (!findBrowserExecutable()) {
+      console.log('   (skipped: no Chrome, Edge or Chromium here)');
+      return;
+    }
+    const AdmZip = require('adm-zip');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-pdf-media-'));
+    const source = path.join(dir, 'drawn.md');
+    // A second diagram Mermaid cannot read: kept as its source, and named in the warnings.
+    fs.writeFileSync(source, `${mediaSource}\n\`\`\`mermaid\nnot a diagram\n\`\`\`\n`, 'utf8');
+    try {
+      const docx = await convertMarkdownToPdf(source, null, { format: 'docx' });
+      if (docx.warnings.some(warning => warning.includes('cdn.jsdelivr.net'))) {
+        console.log(`   (skipped: ${docx.warnings[0]})`);
+        return;
+      }
+      assert.deepStrictEqual(docx.warnings.map(warning => warning.split(':')[0]), ['Mermaid diagram 2 is kept as its source']);
+      const zip = new AdmZip(docx.outputPath);
+      const picture = zip.getEntry('word/media/image1.png').getData();
+      assert.strictEqual(picture.readUInt32BE(0), 0x89504e47);
+      assert.ok(!zip.getEntry('word/media/image2.png'));
+      const size = imageSize(picture);
+      const document = zip.readAsText('word/document.xml');
+      assertWellFormed(document, 'document.xml');
+      // Drawn at twice the size it is shown at.
+      const [, cx] = /<wp:extent cx="(\d+)" cy="(\d+)"\/>/.exec(document);
+      assert.ok(Math.abs((Number(cx) / 9525) * 2 - size.width) <= 2, `${cx} EMU for ${size.width} px`);
+      assert.strictEqual((document.match(/<m:oMath>/g) || []).length, 4);
+      assert.ok(document.includes('<m:chr m:val="∑"/>'));
+      assert.ok(document.includes('>not a diagram</w:t>'));
+
+      const epub = await convertMarkdownToPdf(source, null, { format: 'epub' });
+      const book = new AdmZip(epub.outputPath);
+      assert.strictEqual(book.getEntry('OEBPS/images/diagram-1.png').getData().readUInt32BE(0), 0x89504e47);
+      const chapter = book.readAsText('OEBPS/chapter-1.xhtml');
+      assertWellFormed(chapter, 'chapter-1.xhtml');
+      assert.strictEqual((chapter.match(/<math /g) || []).length, 4);
+      assert.ok(book.readAsText('OEBPS/content.opf').includes('properties="mathml"'));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   // Broken references (--strict)

@@ -5,6 +5,7 @@ var definitions = {
   "docx-browser": function (module, exports, require) {
 /*! SPDX-License-Identifier: MIT | Copyright (c) 2026 Van Nguyen | github.com/vannt-dev/convert-md-to-pdf */
 const { docxEntries } = require('./docx');
+const { buildDocument, collectMedia, mediaLookup } = require('./docmodel');
 const { createZipAsync } = require('./zip');
 
 /**
@@ -44,10 +45,22 @@ async function deflateRaw(bytes) {
 }
 
 /**
+ * The Mermaid diagrams and formulas a document has, for the page to draw before the export
+ * (extension/lib/media.js renderMedia), then hand over with mediaLookup as `options.media`.
+ * @param {string} rawMarkdown
+ * @param {Object} [options] The converter's options (`katex: false` and `mermaid: false` leave them out)
+ * @returns {{ diagrams: string[], formulas: { tex: string, display: boolean }[] }}
+ */
+function mediaJobs(rawMarkdown, options = {}) {
+  return collectMedia(buildDocument(rawMarkdown, options).blocks);
+}
+
+/**
  * Converts Markdown to the bytes of a .docx file, in the browser.
  * @param {string} rawMarkdown
  * @param {Object} [options] The converter's options (pageSize, font, toc, cover, ...), plus
- *   `readImage(src)`: the picture an address names, as `{ data, extension, size }`, or null
+ *   `readImage(src)`: the picture an address names, as `{ data, extension, size }`, or null, and
+ *   `media`: the drawn diagrams and formulas (mediaLookup)
  * @returns {Promise<Uint8Array>}
  */
 function exportDocx(rawMarkdown, options = {}) {
@@ -56,13 +69,16 @@ function exportDocx(rawMarkdown, options = {}) {
 }
 
 module.exports = {
-  exportDocx
+  exportDocx,
+  mediaJobs,
+  mediaLookup
 };
   },
   "docx": function (module, exports, require) {
 /*! SPDX-License-Identifier: MIT | Copyright (c) 2026 Van Nguyen | github.com/vannt-dev/convert-md-to-pdf */
 const { buildDocument, collectHeadings, isPortableLink, plainText } = require('./docmodel');
 const { readLocalImage } = require('./images');
+const { mathmlToOmml } = require('./omml');
 const { createZip } = require('./zip');
 
 /**
@@ -70,14 +86,17 @@ const { createZip } = require('./zip');
  * HTML: headings, lists, tables, code and quotes become real Word styles and
  * structures, which a reader can restyle, instead of formatted lookalikes.
  *
- * Not carried over: themes and custom CSS, Mermaid diagrams (kept as their
- * source), and LaTeX math (kept as typed). Images are embedded when they are
- * local PNG, JPEG or GIF files; any other image is named with its address.
+ * Mermaid diagrams become pictures and LaTeX formulas Word equations when
+ * `options.media` has them drawn (see docmodel's collectMedia and mediaLookup);
+ * without it a diagram is kept as its source and a formula as typed. Themes and
+ * custom CSS are not carried over. Images are embedded when they are local PNG,
+ * JPEG or GIF files; any other image is named with its address.
  */
 
 const TWIPS_PER_MM = 1440 / 25.4;
 const EMU_PER_PIXEL = 9525;
 const EMU_PER_TWIP = 635;
+const NO_MEDIA = { diagram: () => null, formula: () => null };
 const PAGE_SIZES = { A4: [11906, 16838], LETTER: [12240, 15840], A3: [16838, 23811], LEGAL: [12240, 20160] };
 const HEADING_SIZES = [36, 30, 26, 24, 22, 22];
 const CODE_FONT = 'Consolas';
@@ -111,11 +130,13 @@ function bookmarkName(id) {
 }
 
 class DocxWriter {
-  constructor(document, readImage) {
+  constructor(document, readImage, media = NO_MEDIA) {
     this.document = document;
     this.readImage = readImage;
+    this.media = media;
     this.relationships = [];
-    this.media = [];
+    // The files of word/media/.
+    this.files = [];
     this.orderedLists = [];
     this.bookmarks = new Map();
     this.drawingId = 0;
@@ -126,6 +147,7 @@ class DocxWriter {
     this.page = { width: landscape ? height : width, height: landscape ? width : height, landscape };
     this.margins = parseMargins(settings.margin);
     this.contentWidth = this.page.width - this.margins.left - this.margins.right;
+    this.contentHeight = this.page.height - this.margins.top - this.margins.bottom;
 
     // Bookmark names are cut to Word's limit, so two long headings could collide.
     const taken = new Set();
@@ -166,6 +188,13 @@ class DocxWriter {
     return `<w:r>${this.runProperties(run, extra)}${pieces.join('')}</w:r>`;
   }
 
+  /** A formula in the text: a Word equation when it was drawn, else the text it was typed as. */
+  mathRun(run, extra = '') {
+    const math = this.media.formula(run.math.tex, run.math.display);
+    if (!math) return this.textRun({ ...run, text: run.math.raw }, extra);
+    return mathmlToOmml(math, false);
+  }
+
   imageRun(run) {
     const image = this.readImage(run.image.src);
     if (!image || !image.size || !['png', 'jpg', 'gif'].includes(image.extension)) {
@@ -173,21 +202,25 @@ class DocxWriter {
       const label = run.image.alt ? `${run.image.alt} (${run.image.src})` : run.image.src;
       return this.textRun({ text: `[${label}]`, italic: true });
     }
-    const name = `image${this.media.length + 1}.${image.extension}`;
-    this.media.push({ name, data: image.data });
+    return this.drawing(image, run.image.alt);
+  }
+
+  /** A picture in the text, at its own size or shrunk to fit the page. */
+  drawing(image, description) {
+    const name = `image${this.files.length + 1}.${image.extension}`;
+    this.files.push({ name, data: image.data });
     const relationshipId = this.relationship(
       'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image',
       `media/${name}`
     );
-    const maxWidth = this.contentWidth * EMU_PER_TWIP;
     let cx = image.size.width * EMU_PER_PIXEL;
     let cy = image.size.height * EMU_PER_PIXEL;
-    if (cx > maxWidth) {
-      cy = Math.round(cy * (maxWidth / cx));
-      cx = maxWidth;
-    }
+    const fit = Math.min(1, (this.contentWidth * EMU_PER_TWIP) / cx, (this.contentHeight * EMU_PER_TWIP) / cy);
+    cx = Math.round(cx * fit);
+    cy = Math.round(cy * fit);
     const id = ++this.drawingId;
-    const alt = xml(run.image.alt || name);
+    // Line breaks kept, so a diagram's source reads as it was written.
+    const alt = xml(description || name).replace(/\r?\n/g, '&#10;');
     return (
       '<w:r><w:drawing>' +
       `<wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/>` +
@@ -203,8 +236,17 @@ class DocxWriter {
     );
   }
 
-  /** Runs, with neighbouring runs of one link wrapped in a single hyperlink. */
-  runs(runs) {
+  /**
+   * Runs, with neighbouring runs of one link wrapped in a single hyperlink.
+   * @param {Object[]} runs
+   * @param {string} [align] Set when the runs are all their paragraph holds, and how it is aligned
+   */
+  runs(runs, align) {
+    const only = runs.length === 1 && runs[0].math && !runs[0].href ? runs[0].math : null;
+    const formula = only && align ? this.media.formula(only.tex, only.display) : null;
+    // Word shows a formula that is all its paragraph holds as an equation of its own, centred;
+    // said so, it keeps the place the text would have.
+    if (formula) return mathmlToOmml(formula, true, align);
     let output = '';
     for (let index = 0; index < runs.length; ) {
       const href = runs[index].href;
@@ -215,6 +257,7 @@ class DocxWriter {
         .map(run => {
           if (run.lineBreak) return '<w:r><w:br/></w:r>';
           if (run.image) return this.imageRun(run);
+          if (run.math) return this.mathRun(run, href ? '<w:rStyle w:val="Hyperlink"/>' : '');
           return this.textRun(run, href ? '<w:rStyle w:val="Hyperlink"/>' : '');
         })
         .join('');
@@ -276,7 +319,7 @@ class DocxWriter {
         case 'paragraph': {
           const marker = takeNumbering();
           const prefix = marker && marker.checkbox ? this.textRun({ text: `${marker.checkbox} ` }) : '';
-          output += this.paragraph(prefix + this.runs(block.runs), {
+          output += this.paragraph(prefix + this.runs(block.runs, prefix ? undefined : 'left'), {
             style: context.quote > 0 ? 'Quote' : undefined,
             numbering: marker ? { id: marker.id, level: context.list } : undefined,
             indent: marker ? { left: base, hanging: 360 } : plainIndent
@@ -293,6 +336,23 @@ class DocxWriter {
           }
           // Two code blocks in a row would otherwise merge into one shaded box.
           output += this.paragraph('', { style: 'CodeSpacer' });
+          break;
+        }
+        case 'diagram': {
+          const image = this.media.diagram(block.text);
+          if (!image) {
+            output += this.blocks([{ type: 'code', lang: 'mermaid', text: block.text }], { ...context, numbering: null });
+            break;
+          }
+          // The description is the diagram's source: what a screen reader can tell of it.
+          output += this.paragraph(this.drawing(image, block.text.trim()), { style: 'Figure', indent: plainIndent });
+          break;
+        }
+        case 'math': {
+          const math = this.media.formula(block.tex, true);
+          output += math
+            ? this.paragraph(mathmlToOmml(math, true), { indent: plainIndent })
+            : this.paragraph(this.textRun({ text: block.raw }), { indent: plainIndent });
           break;
         }
         case 'quote':
@@ -341,7 +401,7 @@ class DocxWriter {
         `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/>` +
         (header ? '<w:shd w:val="clear" w:color="auto" w:fill="F2F2F2"/>' : '') +
         `</w:tcPr><w:p><w:pPr><w:pStyle w:val="TableText"/>${align ? `<w:jc w:val="${align}"/>` : ''}</w:pPr>` +
-        `${this.runs(runs)}</w:p></w:tc>`
+        `${this.runs(runs, align || 'left')}</w:p></w:tc>`
       );
     };
     const row = (cells, header) =>
@@ -395,7 +455,8 @@ class DocxWriter {
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
       'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +
-      'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">' +
+      'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" ' +
+      'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">' +
       `<w:body>${body}<w:sectPr>` +
       `<w:pgSz w:w="${page.width}" w:h="${page.height}"${page.landscape ? ' w:orient="landscape"' : ''}/>` +
       `<w:pgMar w:top="${margins.top}" w:right="${margins.right}" w:bottom="${margins.bottom}" w:left="${margins.left}" w:header="708" w:footer="708" w:gutter="0"/>` +
@@ -440,6 +501,7 @@ class DocxWriter {
         `<w:rFonts w:ascii="${CODE_FONT}" w:hAnsi="${CODE_FONT}" w:cs="${CODE_FONT}"/><w:sz w:val="19"/><w:szCs w:val="19"/>`
       ) +
       paragraphStyle('CodeSpacer', 'Code Spacer', '<w:spacing w:after="0" w:line="120" w:lineRule="exact"/>', '<w:sz w:val="8"/>') +
+      paragraphStyle('Figure', 'Figure', '<w:spacing w:before="120" w:after="200"/><w:jc w:val="center"/>', '') +
       paragraphStyle('TableText', 'Table Text', '<w:spacing w:before="40" w:after="40"/>', '') +
       paragraphStyle('Rule', 'Rule', '<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="BFBFBF"/></w:pBdr><w:spacing w:after="240"/>', '') +
       paragraphStyle('ContentsTitle', 'Contents Title', '<w:spacing w:before="240" w:after="120"/>', '<w:b/><w:sz w:val="28"/><w:szCs w:val="28"/>') +
@@ -482,7 +544,7 @@ class DocxWriter {
     this.relationship('http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles', 'styles.xml');
     this.relationship('http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering', 'numbering.xml');
 
-    const extensions = [...new Set(this.media.map(file => file.name.split('.').pop()))];
+    const extensions = [...new Set(this.files.map(file => file.name.split('.').pop()))];
     const imageTypes = { png: 'image/png', jpg: 'image/jpeg', gif: 'image/gif' };
     const contentTypes =
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -527,7 +589,7 @@ class DocxWriter {
       { name: 'word/styles.xml', data: this.stylesXml() },
       { name: 'word/numbering.xml', data: numberingXml },
       { name: 'word/_rels/document.xml.rels', data: documentRels },
-      ...this.media.map(file => ({ name: `word/media/${file.name}`, data: file.data, store: true }))
+      ...this.files.map(file => ({ name: `word/media/${file.name}`, data: file.data, store: true }))
     ];
   }
 }
@@ -545,12 +607,13 @@ function decodeURIComponentSafe(value) {
  * @param {string} rawMarkdown
  * @param {Object} [options] The converter's options, plus `baseDir`: the folder images are relative to,
  *   or `readImage(src)`: how to get an image instead of reading a local file (the browser extension
- *   hands over the pictures its page has), returning what `readLocalImage` returns, or null
+ *   hands over the pictures its page has), returning what `readLocalImage` returns, or null;
+ *   and `media`: the diagrams and formulas drawn beforehand (docmodel's mediaLookup)
  * @returns {{ name: string, data: Uint8Array | string, store?: boolean }[]}
  */
 function docxEntries(rawMarkdown, options = {}) {
   const readImage = options.readImage || (src => readLocalImage(src, options.baseDir));
-  return new DocxWriter(buildDocument(rawMarkdown, options), readImage).entries();
+  return new DocxWriter(buildDocument(rawMarkdown, options), readImage, options.media || NO_MEDIA).entries();
 }
 
 /**
@@ -574,6 +637,8 @@ const { marked } = require('marked');
 const { parseFrontMatter } = require('./frontmatter');
 const { applyFootnotes } = require('./footnotes');
 const { preprocessMarkdown } = require('./preprocess');
+const { protectMath } = require('./math');
+const { parseMathml } = require('./omml');
 
 /**
  * A format-neutral model of a Markdown document, for the exporters that do
@@ -587,12 +652,18 @@ const { preprocessMarkdown } = require('./preprocess');
  *   { type: 'list', ordered, start, items: [{ checked, blocks }] }
  *   { type: 'table', header: [{ align, runs }], rows: [[{ align, runs }]] }
  *   { type: 'rule' } | { type: 'pageBreak' }
+ *   { type: 'diagram', text }        a Mermaid diagram, as its source
+ *   { type: 'math', tex, raw }       a formula on lines of its own
  *
  * Runs are flat: nested emphasis becomes flags on each piece of text, so a
  * writer never has to balance tags.
  *   { text, bold, italic, strike, code, sup, sub, href }
  *   { image: { src, alt }, href } | { lineBreak: true }
+ *   { math: { tex, display, raw }, ... }  a formula in the text; `raw` is how it was typed
  */
+
+// The stand-ins math.js `protectMath` puts in place of the formulas while Markdown is parsed.
+const STAND_IN = /\uE000(\d+)\uE001/g;
 
 const NAMED_ENTITIES = {
   amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', copy: '©', reg: '®',
@@ -648,8 +719,9 @@ function attribute(source, name) {
  * Collects the runs of one block. Raw HTML is reduced to what it means for
  * the text: emphasis, line breaks, links and images are kept, any other tag
  * is dropped and its content stays.
+ * @param {Object[]} formulas What the math stand-ins in the text hold (math.js protectMath)
  */
-function createRunCollector() {
+function createRunCollector(formulas) {
   const runs = [];
   const flags = { bold: 0, italic: 0, strike: 0, code: 0, sup: 0, sub: 0 };
   // Raw <a> elements still open: a link target, or null for one whose text is skipped.
@@ -666,14 +738,32 @@ function createRunCollector() {
     return run;
   };
 
-  const pushText = (text, style) => {
-    if (!text || skipping > 0) return;
+  const pushPlain = (text, style) => {
+    if (!text) return;
     const run = { text, ...styleNow(style) };
     const previous = runs[runs.length - 1];
     // Neighbouring pieces that look the same are one run.
     if (previous && previous.text !== undefined && sameStyle(previous, run)) previous.text += text;
     else runs.push(run);
   };
+
+  const pushText = (text, style) => {
+    if (!text || skipping > 0) return;
+    // In code a formula is the text it was typed as; `\$` is a dollar sign.
+    const verbatim = style.code || flags.code > 0;
+    let last = 0;
+    for (const match of text.matchAll(STAND_IN)) {
+      const item = formulas[match[1]];
+      if (!item) continue;
+      pushPlain(text.slice(last, match.index), style);
+      last = match.index + match[0].length;
+      if (verbatim || item.dollar) pushPlain(verbatim ? item.raw : '$', style);
+      else runs.push({ math: { tex: item.tex, display: item.display, raw: item.raw }, ...styleNow(style) });
+    }
+    pushPlain(text.slice(last), style);
+  };
+  // An address or a description: formulas in it are kept as typed.
+  const written = text => restoreFormulas(text, formulas);
 
   const pushHtml = (html, style) => {
     let last = 0;
@@ -693,7 +783,7 @@ function createRunCollector() {
       } else if (tag === 'img' && !closing) {
         const src = attribute(attributes, 'src');
         if (src && skipping === 0) {
-          runs.push({ image: { src, alt: attribute(attributes, 'alt') || '' }, ...styleNow(style) });
+          runs.push({ image: { src: written(src), alt: written(attribute(attributes, 'alt') || '') }, ...styleNow(style) });
         }
       } else if (tag === 'a') {
         if (closing) {
@@ -706,7 +796,7 @@ function createRunCollector() {
         } else {
           const href = attribute(attributes, 'href');
           // A footnote number stays a number; its target is a list item further down.
-          anchors.push({ href: href && !/^#fn-?/.test(href) ? href : null });
+          anchors.push({ href: href && !/^#fn-?/.test(href) ? written(href) : null });
         }
       }
     }
@@ -721,9 +811,9 @@ function createRunCollector() {
         case 'del': walk(token.tokens, { ...style, strike: true }); break;
         case 'codespan': pushText(decodeEntities(token.text), { ...style, code: true }); break;
         case 'br': if (skipping === 0) runs.push({ lineBreak: true }); break;
-        case 'link': walk(token.tokens, { ...style, href: token.href }); break;
+        case 'link': walk(token.tokens, { ...style, href: written(token.href) }); break;
         case 'image':
-          if (skipping === 0) runs.push({ image: { src: token.href, alt: token.text || '' }, ...styleNow(style) });
+          if (skipping === 0) runs.push({ image: { src: written(token.href), alt: written(token.text || '') }, ...styleNow(style) });
           break;
         case 'html': pushHtml(token.text, style); break;
         case 'checkbox': break;
@@ -745,14 +835,20 @@ function sameStyle(a, b) {
   return true;
 }
 
-function inlineRuns(tokens) {
-  const collector = createRunCollector();
+/** Text with the math stand-ins put back as the formulas were typed. */
+function restoreFormulas(text, formulas) {
+  if (!formulas.length || !text) return text;
+  return text.replace(STAND_IN, (all, index) => (formulas[index] ? formulas[index].raw : all));
+}
+
+function inlineRuns(tokens, formulas) {
+  const collector = createRunCollector(formulas);
   collector.walk(tokens, {});
   return trimRuns(collector.runs);
 }
 
-function htmlRuns(html) {
-  const collector = createRunCollector();
+function htmlRuns(html, formulas) {
+  const collector = createRunCollector(formulas);
   collector.pushHtml(html, {});
   return trimRuns(collector.runs);
 }
@@ -784,10 +880,18 @@ function isPortableLink(href) {
 
 /** The text of a list of runs, for slugs, titles and alt text. */
 function plainText(runs) {
-  return runs.map(run => (run.text !== undefined ? run.text : run.image ? run.image.alt : ' ')).join('');
+  return runs
+    .map(run => (run.text !== undefined ? run.text : run.image ? run.image.alt : run.math ? run.math.tex : ' '))
+    .join('');
 }
 
-function toBlocks(tokens, slug) {
+/**
+ * @param {Object[]} tokens marked's tokens
+ * @param {{ slug: Function, formulas: Object[], diagrams: boolean }} context How headings get
+ *   their ids, what the math stand-ins hold, and whether Mermaid code is a diagram
+ */
+function toBlocks(tokens, context) {
+  const { slug, formulas } = context;
   const blocks = [];
   for (const token of tokens || []) {
     switch (token.type) {
@@ -795,15 +899,20 @@ function toBlocks(tokens, slug) {
       case 'def':
         break;
       case 'heading': {
-        const runs = inlineRuns(token.tokens);
+        const runs = inlineRuns(token.tokens, formulas);
         blocks.push({ type: 'heading', depth: token.depth, id: slug(plainText(runs), `heading-${blocks.length + 1}`), runs });
         break;
       }
-      case 'code':
-        blocks.push({ type: 'code', lang: (token.lang || '').trim().split(/\s+/)[0], text: token.text || '' });
+      case 'code': {
+        const lang = (token.lang || '').trim().split(/\s+/)[0];
+        // Indented code is not passed over when the formulas are taken out.
+        const text = restoreFormulas(token.text || '', formulas);
+        if (lang === 'mermaid' && context.diagrams && text.trim()) blocks.push({ type: 'diagram', text });
+        else blocks.push({ type: 'code', lang, text });
         break;
+      }
       case 'blockquote':
-        blocks.push({ type: 'quote', blocks: toBlocks(token.tokens, slug) });
+        blocks.push({ type: 'quote', blocks: toBlocks(token.tokens, context) });
         break;
       case 'list':
         blocks.push({
@@ -812,12 +921,12 @@ function toBlocks(tokens, slug) {
           start: Number.isInteger(token.start) ? token.start : 1,
           items: token.items.map(item => ({
             checked: item.task ? Boolean(item.checked) : null,
-            blocks: toBlocks(item.tokens, slug)
+            blocks: toBlocks(item.tokens, context)
           }))
         });
         break;
       case 'table': {
-        const cell = (source, index) => ({ align: token.align[index] || null, runs: inlineRuns(source.tokens) });
+        const cell = (source, index) => ({ align: token.align[index] || null, runs: inlineRuns(source.tokens, formulas) });
         blocks.push({ type: 'table', header: token.header.map(cell), rows: token.rows.map(row => row.map(cell)) });
         break;
       }
@@ -831,14 +940,17 @@ function toBlocks(tokens, slug) {
           // The notes follow as an ordinary numbered list; a rule sets them apart.
           blocks.push({ type: 'rule' });
         } else {
-          const runs = htmlRuns(token.text);
+          const runs = htmlRuns(token.text, formulas);
           if (runs.length) blocks.push({ type: 'paragraph', runs });
         }
         break;
       }
       default: {
-        const runs = inlineRuns(token.tokens || [token]);
-        if (runs.length) blocks.push({ type: 'paragraph', runs });
+        const runs = inlineRuns(token.tokens || [token], formulas);
+        const only = runs.length === 1 && runs[0].math && !runs[0].href ? runs[0].math : null;
+        // A display formula on lines of its own takes the place of its paragraph.
+        if (only && only.display) blocks.push({ type: 'math', tex: only.tex, raw: only.raw });
+        else if (runs.length) blocks.push({ type: 'paragraph', runs });
       }
     }
   }
@@ -868,12 +980,18 @@ function buildDocument(rawMarkdown = '', options = {}) {
     margin: options.margin || frontMatter.margin || '14mm 12mm 16mm 12mm',
     toc: options.toc !== undefined ? options.toc : Boolean(frontMatter.toc),
     cover: options.cover !== undefined ? options.cover : Boolean(frontMatter.cover),
-    highlight: options.highlight !== undefined ? options.highlight : frontMatter.highlight !== false
+    highlight: options.highlight !== undefined ? options.highlight : frontMatter.highlight !== false,
+    // As in the PDF: `--no-katex` and `--no-mermaid`, or `katex: false` and `mermaid: false`.
+    math: options.katex !== undefined ? options.katex !== false : frontMatter.katex !== false,
+    diagrams: options.mermaid !== undefined ? options.mermaid !== false : frontMatter.mermaid !== false
   };
 
-  const processed = preprocessMarkdown(applyFootnotes(content));
+  // The formulas are taken out first, as for the PDF, so that Markdown cannot change them.
+  const math = settings.math ? protectMath(content) : null;
+  const processed = preprocessMarkdown(applyFootnotes(math ? math.text : content), { mathProtected: Boolean(math) });
   const tokens = marked.lexer(processed, { gfm: true, breaks: true });
-  return { meta, blocks: toBlocks(tokens, createSlugger()), settings };
+  const context = { slug: createSlugger(), formulas: math ? math.formulas : [], diagrams: settings.diagrams };
+  return { meta, blocks: toBlocks(tokens, context), settings };
 }
 
 /** Every heading of the document, at any depth of nesting, in order. */
@@ -886,11 +1004,76 @@ function collectHeadings(blocks, found = []) {
   return found;
 }
 
+/**
+ * The diagrams and formulas of a document, each once, for whatever draws them before a writer
+ * runs: the CLI's headless browser, or the extension's page.
+ * @param {Object[]} blocks
+ * @returns {{ diagrams: string[], formulas: { tex: string, display: boolean }[] }}
+ */
+function collectMedia(blocks) {
+  const diagrams = new Set();
+  const formulas = new Map();
+  const addRuns = runs => {
+    for (const run of runs) {
+      if (run.math) formulas.set(mathKey(run.math.tex, run.math.display), { tex: run.math.tex, display: run.math.display });
+    }
+  };
+  const walk = list => {
+    for (const block of list) {
+      if (block.type === 'diagram') diagrams.add(block.text);
+      else if (block.type === 'math') formulas.set(mathKey(block.tex, true), { tex: block.tex, display: true });
+      else if (block.runs) addRuns(block.runs);
+      else if (block.type === 'quote') walk(block.blocks);
+      else if (block.type === 'list') block.items.forEach(item => walk(item.blocks));
+      else if (block.type === 'table') [block.header, ...block.rows].forEach(row => row.forEach(cell => addRuns(cell.runs)));
+    }
+  };
+  walk(blocks);
+  return { diagrams: [...diagrams], formulas: [...formulas.values()] };
+}
+
+/** How a drawn formula is looked up: the same TeX can be drawn inline and on a line of its own. */
+function mathKey(tex, display) {
+  return `${display ? 'D' : 'I'}:${tex}`;
+}
+
+/**
+ * What the writers look the drawn diagrams and formulas up in.
+ * @param {{ diagrams: string[], formulas: { tex: string, display: boolean }[] }} jobs What
+ *   collectMedia found
+ * @param {{ diagrams: Object[], formulas: Object[] }} results What media.js renderMedia drew for
+ *   them, in the same order; one that failed carries an `error` and is left out
+ * @returns {{ diagram: (text: string) => Object | null, formula: (tex: string, display: boolean) => Object | null }}
+ *   a diagram as an image (`{ data, extension, mediaType, size }`), a formula as parsed MathML
+ */
+function mediaLookup(jobs, results = {}) {
+  const diagrams = new Map();
+  const formulas = new Map();
+  jobs.diagrams.forEach((text, index) => {
+    const drawn = (results.diagrams || [])[index];
+    if (!drawn || !drawn.png || !(drawn.width > 0) || !(drawn.height > 0)) return;
+    const data = Uint8Array.from(atob(drawn.png), character => character.charCodeAt(0));
+    diagrams.set(text, { data, extension: 'png', mediaType: 'image/png', size: { width: drawn.width, height: drawn.height } });
+  });
+  jobs.formulas.forEach((formula, index) => {
+    const drawn = (results.formulas || [])[index];
+    const math = drawn && drawn.mathml ? parseMathml(drawn.mathml) : null;
+    if (math) formulas.set(mathKey(formula.tex, formula.display), math);
+  });
+  return {
+    diagram: text => diagrams.get(text) || null,
+    formula: (tex, display) => formulas.get(mathKey(tex, display)) || null
+  };
+}
+
 module.exports = {
   buildDocument,
   collectHeadings,
+  collectMedia,
   decodeEntities,
   isPortableLink,
+  mathKey,
+  mediaLookup,
   plainText
 };
   },
@@ -1124,6 +1307,656 @@ function preprocessMarkdown(mdContent = '', options = {}) {
 
 module.exports = {
   preprocessMarkdown
+};
+  },
+  "math": function (module, exports, require) {
+/*! SPDX-License-Identifier: MIT | Copyright (c) 2026 Van Nguyen | github.com/vannt-dev/convert-md-to-pdf */
+/**
+ * LaTeX math, in two steps.
+ *
+ * 1. `protectMath` takes the formulas out of the Markdown before it is parsed, and its
+ *    `restore` puts them back into the HTML. Markdown would otherwise read the TeX as its own
+ *    syntax: `\{` and `\,` lose the backslash, `\\` becomes `\`, `_` and `*` become emphasis.
+ * 2. `renderMath` draws them with KaTeX once the page is in the browser.
+ *
+ * `$...$` follows pandoc's rule so prices stay text: no space just inside the dollars and no
+ * digit right after the closing one ("$5 and $10" is not math). `\$` is a plain dollar.
+ * Code, pre blocks and diagrams are left alone.
+ *
+ * Needs nothing from Node: the same file is shipped in the extension as extension/lib/math.js
+ * and inlined in the CLI's HTML (a test keeps the two copies identical).
+ */
+(function (scope) {
+  const SKIP_TAGS = new Set(['PRE', 'CODE', 'SCRIPT', 'STYLE', 'TEXTAREA', 'SVG', 'svg']);
+  const NUMBER = /^\d+(?:[.,]\d+)?$/;
+
+  // True when the line break at `at` is followed by an empty line (the paragraph ends there).
+  function paragraphEnds(text, at) {
+    let k = at + 1;
+    while (text[k] === ' ' || text[k] === '\t' || text[k] === '\r') k++;
+    return text[k] === '\n';
+  }
+
+  // The text cut into parts; a formula also carries `raw`, the source it was written as.
+  function scanMath(text) {
+    const parts = [];
+    let last = 0;
+    let i = 0;
+    while (i < text.length) {
+      const ch = text[i];
+      if (ch === '\\') { i += 2; continue; }
+      if (ch !== '$') { i++; continue; }
+
+      const display = text[i + 1] === '$';
+      const width = display ? 2 : 1;
+      const start = i + width;
+      let end = -1;
+      for (let j = start; j < text.length; j++) {
+        if (text[j] === '\\') { j++; continue; }
+        // A formula in the text stays within its paragraph.
+        if (!display && text[j] === '\n' && paragraphEnds(text, j)) break;
+        if (text[j] !== '$') continue;
+        if (!display || text[j + 1] === '$') end = j;
+        break;
+      }
+      const tex = end === -1 ? '' : text.slice(start, end);
+      const ok = display
+        ? tex.trim() !== ''
+        : tex !== '' && !/^\s|\s$/.test(tex) && !/\d/.test(text[end + 1] || '') && !NUMBER.test(tex);
+      if (!ok) { i += width; continue; }
+
+      if (i > last) parts.push({ text: text.slice(last, i) });
+      parts.push({ tex: display ? tex.trim() : tex, display, raw: text.slice(i, end + width) });
+      i = end + width;
+      last = i;
+    }
+    if (last < text.length) parts.push({ text: text.slice(last) });
+    return parts;
+  }
+
+  /**
+   * Finds the math in a run of text.
+   * @param {string} text
+   * @returns {({ text: string } | { tex: string, display: boolean })[]} the text cut into parts
+   */
+  function splitMath(text) {
+    return scanMath(text).map((p) => ('text' in p ? p : { tex: p.tex, display: p.display }));
+  }
+
+  // A formula's stand-in while Markdown is parsed: private-use characters around its number,
+  // which no Markdown rule reads as syntax.
+  const OPEN = '';
+  const CLOSE = '';
+  const STAND_IN = /(\d+)/g;
+  // The "\text{A} = \text{B} - \text{C}" layout, which the preprocessor draws as a box itself.
+  const DRAWN_BOX = /^\$\$\s*\\text\{[^}]+\}\s*=\s*\\text\{[^}]+\}\s*-\s*\\text\{[^}]+\}\s*\$\$$/;
+  const FENCE = /^[ \t>]*(`{3,}|~{3,})(.*)$/;
+
+  // Where the fenced code blocks are: [start, end) pairs.
+  function fencedBlocks(markdown) {
+    const blocks = [];
+    let pos = 0;
+    let fence = null;
+    let fenceStart = 0;
+    markdown.split('\n').forEach((line) => {
+      const m = FENCE.exec(line.replace(/\r$/, ''));
+      if (!fence) {
+        // A backtick fence has no backtick in its info string; such a line is a code span.
+        if (m && !(m[1][0] === '`' && m[2].includes('`'))) { fence = m[1]; fenceStart = pos; }
+      } else if (m && m[1][0] === fence[0] && m[1].length >= fence.length && m[2].trim() === '') {
+        blocks.push([fenceStart, pos + line.length]);
+        fence = null;
+      }
+      pos += line.length + 1;
+    });
+    if (fence) blocks.push([fenceStart, markdown.length]);
+    return blocks;
+  }
+
+  // The start of the run of exactly `n` backticks that closes a code span, or -1. A code span
+  // stays within its paragraph.
+  function closingBackticks(text, from, n) {
+    for (let j = from; j < text.length; j++) {
+      if (text[j] === '\n' && paragraphEnds(text, j)) return -1;
+      if (text[j] !== '`') continue;
+      let len = 1;
+      while (text[j + len] === '`') len++;
+      if (len === n) return j;
+      j += len - 1;
+    }
+    return -1;
+  }
+
+  /**
+   * Takes the math out of Markdown source, so that the Markdown parser cannot change it.
+   * Fenced code and code spans are not searched.
+   * @param {string} markdown
+   * @returns {{ text: string, restore: (html: string) => string, formulas: object[] }} the
+   *   Markdown to parse, the function that puts the formulas into the HTML made from it, and
+   *   what each stand-in holds (`{ tex, display, raw }`, or `{ raw, dollar }` for a `\$`), for
+   *   the writers that read the Markdown without HTML (Word, EPUB)
+   */
+  function protectMath(markdown) {
+    const source = String(markdown || '');
+    const kept = [];
+    const keep = (item) => OPEN + (kept.push(item) - 1) + CLOSE;
+
+    const plain = (text) => scanMath(text).map((p) => {
+      if ('text' in p) {
+        // `\$` is a dollar sign; kept apart so that two of them are never read as a formula.
+        return p.text.replace(/\\([\s\S])/g, (pair, ch) => (ch === '$' ? keep({ raw: pair, dollar: true }) : pair));
+      }
+      return p.display && DRAWN_BOX.test(p.raw) ? p.raw : keep(p);
+    }).join('');
+
+    // Text outside fenced code: its code spans are passed over as they are.
+    const prose = (text) => {
+      let out = '';
+      let last = 0;
+      let i = 0;
+      while (i < text.length) {
+        if (text[i] === '\\') { i += 2; continue; }
+        if (text[i] !== '`') { i++; continue; }
+        let n = 1;
+        while (text[i + n] === '`') n++;
+        const close = closingBackticks(text, i + n, n);
+        if (close === -1) { i += n; continue; }
+        out += plain(text.slice(last, i)) + text.slice(i, close + n);
+        i = last = close + n;
+      }
+      return out + plain(text.slice(last));
+    };
+
+    let text = '';
+    let pos = 0;
+    fencedBlocks(source).forEach(([start, end]) => {
+      text += prose(source.slice(pos, start)) + source.slice(start, end);
+      pos = end;
+    });
+    text += prose(source.slice(pos));
+    return { text, restore: (html) => restoreMath(html, kept), formulas: kept };
+  }
+
+  function escapeText(text) {
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  const VERBATIM_TAGS = new Set(['pre', 'code', 'script', 'style', 'textarea']);
+  // A comment, a tag, or a stand-in in the text between them.
+  const HTML_PART = /<!\-\-[\s\S]*?\-\->|<(\/?)([a-zA-Z][^\s\/>]*)(?:"[^"]*"|'[^']*'|[^>"'])*>|(\d+)/g;
+  const ALONE_IN_PARAGRAPH = /<p>((\d+))<\/p>/g;
+
+  // Puts the formulas into the HTML: as elements for `renderMath` in the text, and as the
+  // source they were written as inside code and attribute values.
+  function restoreMath(html, kept) {
+    if (!kept.length || !html) return html;
+    const written = (text) => text.replace(STAND_IN, (all, n) => (kept[n] ? escapeText(kept[n].raw) : all));
+    let verbatim = 0;
+    // A display formula on lines of its own takes the place of its paragraph.
+    const blocks = html.replace(ALONE_IN_PARAGRAPH, (all, standIn, n) => (kept[n] && kept[n].display ? standIn : all));
+    return blocks.replace(HTML_PART, (part, closing, tag, n) => {
+      if (n === undefined) {
+        if (tag && VERBATIM_TAGS.has(tag.toLowerCase())) verbatim = closing ? Math.max(0, verbatim - 1) : verbatim + 1;
+        return written(part);
+      }
+      const item = kept[n];
+      if (!item) return part;
+      if (verbatim > 0) return escapeText(item.raw);
+      if (item.dollar) return '<span class="math-dollar">$</span>';
+      return item.display
+        ? `<div class="formula-box">${escapeText(item.tex)}</div>`
+        : `<span class="math-inline">${escapeText(item.tex)}</span>`;
+    });
+  }
+
+  function skipped(node, root) {
+    for (let el = node.parentElement; el && el !== root.parentElement; el = el.parentElement) {
+      if (SKIP_TAGS.has(el.tagName)) return true;
+      if (el.classList && (el.classList.contains('katex') || el.classList.contains('mermaid'))) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Draws the math inside `root` with KaTeX. Does nothing without KaTeX.
+   * @param {Element} root
+   * @param {object} katex the KaTeX library (window.katex)
+   */
+  function renderMath(root, katex) {
+    if (!root || !katex) return;
+    const options = (display) => ({ displayMode: display, throwOnError: false });
+
+    // A `.formula-box` holding only text is one display formula; one with markup is the
+    // "\text{A} = \text{B} - \text{C}" layout the preprocessor already drew.
+    root.querySelectorAll('.formula-box').forEach((box) => {
+      const tex = box.textContent.trim();
+      if (box.children.length !== 0 || !tex) return;
+      // Into a div of its own, so the box's styles for its direct <span>s stay off KaTeX's.
+      const holder = box.ownerDocument.createElement('div');
+      katex.render(tex, holder, options(true));
+      box.replaceChildren(holder);
+    });
+
+    // The formulas `protectMath` kept out of Markdown's way.
+    root.querySelectorAll('.math-inline').forEach((el) => {
+      if (el.children.length === 0) katex.render(el.textContent, el, options(false));
+    });
+
+    // Math in text that did not come through `protectMath`.
+    const doc = root.ownerDocument;
+    const walker = doc.createTreeWalker(root, 4 /* NodeFilter.SHOW_TEXT */);
+    const nodes = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (n.nodeValue.includes('$') && !skipped(n, root)) nodes.push(n);
+    }
+    nodes.forEach((node) => {
+      const parts = splitMath(node.nodeValue);
+      if (!parts.some((p) => 'tex' in p)) return;
+      const frag = doc.createDocumentFragment();
+      parts.forEach((p) => {
+        if ('text' in p) { frag.appendChild(doc.createTextNode(p.text)); return; }
+        const span = doc.createElement('span');
+        span.innerHTML = katex.renderToString(p.tex, options(p.display));
+        frag.appendChild(span);
+      });
+      node.parentNode.replaceChild(frag, node);
+    });
+  }
+
+  const api = { splitMath, protectMath, renderMath };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else scope.MdPdfMath = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+  },
+  "omml": function (module, exports, require) {
+/*! SPDX-License-Identifier: MIT | Copyright (c) 2026 Van Nguyen | github.com/vannt-dev/convert-md-to-pdf */
+
+/**
+ * Formulas for the writers that do not go through a browser page: KaTeX's MathML, read into a
+ * small tree, written back out as clean MathML for EPUB, or turned into Office Math (OMML) for
+ * Word, where a formula is then a real equation that can be edited, not a picture of one.
+ *
+ * Only what KaTeX writes is read: elements, attributes, text and character references. Needs
+ * nothing from Node, so the extension's Word export bundles it too.
+ */
+
+const MATHML_NS = 'http://www.w3.org/1998/Math/MathML';
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+
+function xml(text) {
+  return String(text)
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function decode(text) {
+  return text.replace(/&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z]+);/g, (whole, name) => {
+    if (name[0] === '#') {
+      const code = name[1] === 'x' || name[1] === 'X' ? parseInt(name.slice(2), 16) : parseInt(name.slice(1), 10);
+      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+    }
+    return Object.hasOwn(ENTITIES, name) ? ENTITIES[name] : whole;
+  });
+}
+
+/**
+ * Reads the first `<math>` element of a piece of markup (KaTeX wraps it in a span).
+ * @param {string} markup
+ * @returns {{ name: string, attributes: Object, children: Object[] } | null} null when there is none
+ *   or it is not well formed; a text node is `{ text }`
+ */
+function parseMathml(markup) {
+  const start = String(markup || '').search(/<math[\s>]/);
+  if (start === -1) return null;
+  const source = markup.slice(start);
+  const root = { name: '#root', attributes: {}, children: [] };
+  const stack = [root];
+  const TAG = /<(\/?)([a-zA-Z][\w:.-]*)((?:\s+[\w:.-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>|<!--[\s\S]*?-->/g;
+  let last = 0;
+  for (let match = TAG.exec(source); match; match = TAG.exec(source)) {
+    const text = source.slice(last, match.index);
+    if (text) stack[stack.length - 1].children.push({ text: decode(text) });
+    last = TAG.lastIndex;
+    if (match[0].startsWith('<!--')) continue;
+    const [, closing, name, rawAttributes, selfClosing] = match;
+    if (closing) {
+      if (stack.length < 2 || stack[stack.length - 1].name !== name) return null;
+      stack.pop();
+      if (stack.length === 1) return root.children.find(child => child.name === 'math') || null;
+      continue;
+    }
+    const attributes = {};
+    for (const [, key, double, single] of rawAttributes.matchAll(/([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
+      attributes[key] = decode(double !== undefined ? double : single);
+    }
+    const element = { name, attributes, children: [] };
+    stack[stack.length - 1].children.push(element);
+    if (!selfClosing) stack.push(element);
+  }
+  return null;
+}
+
+/**
+ * A formula as MathML for an XHTML page: well formed, with the TeX it was written as kept for
+ * readers that cannot draw it.
+ * @param {Object} math What parseMathml returned
+ * @param {boolean} display On a line of its own
+ * @returns {string}
+ */
+function serializeMathml(math, display) {
+  const annotation = math.children.length === 1 && math.children[0].name === 'semantics'
+    ? math.children[0].children.find(child => child.name === 'annotation')
+    : null;
+  const write = node => {
+    if (node.text !== undefined) return xml(node.text);
+    const attributes = Object.entries(node.attributes)
+      .filter(([key]) => key !== 'xmlns' && key !== 'display')
+      .map(([key, value]) => ` ${key}="${xml(value)}"`)
+      .join('');
+    const body = node.children.map(write).join('');
+    return body ? `<${node.name}${attributes}>${body}</${node.name}>` : `<${node.name}${attributes}/>`;
+  };
+  const body = math.children.map(write).join('');
+  // The TeX as the formula's alternative text, for readers that speak it.
+  const alt = annotation ? ` alttext="${xml(textOf(annotation))}"` : '';
+  return `<math xmlns="${MATHML_NS}"${display ? ' display="block"' : ''}${alt}>${body}</math>`;
+}
+
+// ---------------------------------------------------------------------------------------------
+// MathML to Office Math
+
+const elements = node => node.children.filter(child => child.name);
+const textOf = node => (node.text !== undefined ? node.text : node.children.map(textOf).join(''));
+
+// Operators drawn as an n-ary operator with its limits (a sum, an integral).
+const NARY = new Set('∑∏∐∫∬∭∮∯∰∱∲∳⋀⋁⋂⋃⨀⨁⨂⨄⨆⨌'.split(''));
+// Where the body of a sum or an integral ends: at a relation, a plus or minus, or punctuation.
+const ENDS_OPERAND = new Set('=≠<>≤≥≈≡∼≃≅∝+−-±∓,;:→←↔⇒⇐⇔⟹⟸⟺∈∉⊂⊃⊆⊇'.split(''));
+// The invisible operators of MathML (function application, invisible times and separator).
+const INVISIBLE = /[⁡-⁤]/g;
+// What Word draws an accent with: the combining form of each spacing accent KaTeX writes.
+const ACCENTS = {
+  '^': '̂', 'ˆ': '̂', '~': '̃', '˜': '̃', '¨': '̈', '˙': '̇',
+  'ˉ': '̅', '¯': '̅', '´': '́', 'ˊ': '́', '`': '̀', 'ˋ': '̀',
+  'ˇ': '̌', '˘': '̆', '˚': '̊', '→': '⃗', '←': '⃖', '⃗': '⃗'
+};
+const BARS = new Set(['‾', '¯', '_', '̲', '―', '─']);
+const SCRIPTS = {
+  'double-struck': 'double-struck', script: 'script', 'bold-script': 'script', fraktur: 'fraktur',
+  'bold-fraktur': 'fraktur', 'sans-serif': 'sans-serif', 'bold-sans-serif': 'sans-serif',
+  'sans-serif-italic': 'sans-serif', 'sans-serif-bold-italic': 'sans-serif', monospace: 'monospace'
+};
+
+const property = (name, value) => `<m:${name} m:val="${xml(value)}"/>`;
+const wrap = (name, body) => (body ? `<m:${name}>${body}</m:${name}>` : `<m:${name}/>`);
+
+/** One run of math text, upright or italic as MathML says. */
+function mathRun(text, { style, script, normalText } = {}) {
+  const value = text.replace(INVISIBLE, '');
+  if (!value) return '';
+  let properties = '';
+  // Plain text, or a math style: Office Math takes one or the other.
+  if (normalText) properties += '<m:nor/>';
+  else {
+    if (script) properties += property('scr', script);
+    if (style) properties += property('sty', style);
+  }
+  return (
+    `<m:r>${properties ? `<m:rPr>${properties}</m:rPr>` : ''}` +
+    '<w:rPr><w:rFonts w:ascii="Cambria Math" w:hAnsi="Cambria Math"/></w:rPr>' +
+    `<m:t xml:space="preserve">${xml(value)}</m:t></m:r>`
+  );
+}
+
+function identifierRun(node) {
+  const text = textOf(node);
+  const variant = node.attributes.mathvariant;
+  // MathML draws a one-letter name in italics and a longer one (sin, log) upright.
+  const style =
+    { normal: 'p', bold: 'b', italic: 'i', 'bold-italic': 'bi', 'bold-script': 'b', 'bold-fraktur': 'b', 'bold-sans-serif': 'b' }[variant] ||
+    (SCRIPTS[variant] ? 'p' : [...text].length > 1 ? 'p' : undefined);
+  return mathRun(text, { style, script: SCRIPTS[variant] });
+}
+
+/** The operator at the heart of an element (the ∑ of a sum with limits), or null. */
+function baseOperator(node) {
+  if (!node || !node.name) return null;
+  if (node.name === 'mo') return textOf(node).trim();
+  if (['msub', 'msup', 'msubsup', 'munder', 'mover', 'munderover'].includes(node.name)) {
+    return baseOperator(elements(node)[0]);
+  }
+  if (node.name === 'mrow' || node.name === 'mstyle') {
+    const children = elements(node);
+    return children.length === 1 ? baseOperator(children[0]) : null;
+  }
+  return null;
+}
+
+const isNary = node => NARY.has(baseOperator(node));
+const isFunctionApplication = node => node && node.name === 'mo' && textOf(node).trim() === '⁡';
+const endsOperand = node => node.name === 'mo' && ENDS_OPERAND.has(textOf(node).trim());
+
+/** The parts of a sum or an integral: its symbol, where its limits sit, and the limits. */
+function naryParts(node) {
+  let current = node;
+  while ((current.name === 'mrow' || current.name === 'mstyle') && elements(current).length === 1) current = elements(current)[0];
+  const [, first, second] = elements(current);
+  const parts = { chr: baseOperator(current), sub: null, sup: null, location: 'subSup' };
+  switch (current.name) {
+    case 'msub': parts.sub = first; break;
+    case 'msup': parts.sup = first; break;
+    case 'msubsup': parts.sub = first; parts.sup = second; break;
+    case 'munder': parts.sub = first; parts.location = 'undOvr'; break;
+    case 'mover': parts.sup = first; parts.location = 'undOvr'; break;
+    case 'munderover': parts.sub = first; parts.sup = second; parts.location = 'undOvr'; break;
+    default: break;
+  }
+  return parts;
+}
+
+function nary(node, operand) {
+  const { chr, sub, sup, location } = naryParts(node);
+  return (
+    '<m:nary><m:naryPr>' +
+    property('chr', chr) +
+    property('limLoc', location) +
+    (sub ? '' : property('subHide', '1')) +
+    (sup ? '' : property('supHide', '1')) +
+    '</m:naryPr>' +
+    wrap('sub', sub ? convert(sub) : '') +
+    wrap('sup', sup ? convert(sup) : '') +
+    wrap('e', operand) +
+    '</m:nary>'
+  );
+}
+
+/**
+ * A row of MathML elements. A sum or an integral takes the terms after it as its body, and a
+ * function name (sin, log, lim) followed by the invisible function application takes its argument.
+ */
+function sequence(nodes) {
+  const list = nodes.filter(node => node.name);
+  let output = '';
+  for (let index = 0; index < list.length; index++) {
+    const node = list[index];
+    if (isFunctionApplication(list[index + 1])) {
+      const argument = list[index + 2];
+      output += `<m:func><m:fName>${convert(node)}</m:fName>${wrap('e', argument ? convert(argument) : '')}</m:func>`;
+      index += argument ? 2 : 1;
+      continue;
+    }
+    if (isNary(node)) {
+      let end = index + 1;
+      while (end < list.length && !endsOperand(list[end]) && !isNary(list[end])) end++;
+      output += nary(node, sequence(list.slice(index + 1, end)));
+      index = end - 1;
+      continue;
+    }
+    output += convert(node);
+  }
+  return output;
+}
+
+const isFence = node => node && node.name === 'mo' && node.attributes.fence === 'true';
+
+/** A row between \left and \right: one delimiter object, so the brackets grow with it. */
+function delimited(children) {
+  const open = textOf(children[0]).trim();
+  const close = textOf(children[children.length - 1]).trim();
+  return (
+    '<m:d><m:dPr>' +
+    property('begChr', open) +
+    property('endChr', close) +
+    '</m:dPr>' +
+    wrap('e', sequence(children.slice(1, -1))) +
+    '</m:d>'
+  );
+}
+
+function table(node) {
+  const rows = elements(node).filter(row => row.name === 'mtr' || row.name === 'mlabeledtr');
+  // A numbered row's first cell is its label.
+  const cells = rows.map(row => elements(row).slice(row.name === 'mlabeledtr' ? 1 : 0));
+  const columns = Math.max(1, ...cells.map(row => row.length));
+  const aligns = (node.attributes.columnalign || '').split(/\s+/).filter(Boolean);
+  const alignOf = column => ({ left: 'left', right: 'right' }[aligns[Math.min(column, aligns.length - 1)]] || 'center');
+  const columnProperties = Array.from({ length: columns }, (_, column) =>
+    `<m:mc><m:mcPr>${property('count', '1')}${property('mcJc', alignOf(column))}</m:mcPr></m:mc>`
+  ).join('');
+  const body = cells
+    .map(row => {
+      const filled = Array.from({ length: columns }, (_, column) => (row[column] ? convert(row[column]) : ''));
+      return `<m:mr>${filled.map(cell => wrap('e', cell)).join('')}</m:mr>`;
+    })
+    .join('');
+  return `<m:m><m:mPr><m:mcs>${columnProperties}</m:mcs></m:mPr>${body}</m:m>`;
+}
+
+function underOver(node) {
+  const [base, first, second] = elements(node);
+  if (node.name === 'munderover') {
+    // A sum on its own, without a body: still an n-ary operator.
+    if (isNary(node)) return nary(node, '');
+    const lower = `<m:limLow><m:e>${convert(base)}</m:e>${wrap('lim', convert(first))}</m:limLow>`;
+    return `<m:limUpp><m:e>${lower}</m:e>${wrap('lim', convert(second))}</m:limUpp>`;
+  }
+  if (isNary(node)) return nary(node, '');
+  const top = node.name === 'mover';
+  const mark = first && first.name === 'mo' ? textOf(first).trim() : null;
+  const accent = node.attributes[top ? 'accent' : 'accentunder'] === 'true';
+  if (mark && BARS.has(mark)) {
+    return `<m:bar><m:barPr>${property('pos', top ? 'top' : 'bot')}</m:barPr>${wrap('e', convert(base))}</m:bar>`;
+  }
+  if (top && accent && mark && [...mark].length === 1) {
+    return `<m:acc><m:accPr>${property('chr', ACCENTS[mark] || mark)}</m:accPr>${wrap('e', convert(base))}</m:acc>`;
+  }
+  if (mark && first.attributes.stretchy === 'true') {
+    // A brace or an arrow drawn over or under the whole of its base.
+    return (
+      `<m:groupChr><m:groupChrPr>${property('chr', mark)}${property('pos', top ? 'top' : 'bot')}` +
+      `${property('vertJc', top ? 'bot' : 'top')}</m:groupChrPr>${wrap('e', convert(base))}</m:groupChr>`
+    );
+  }
+  const name = top ? 'limUpp' : 'limLow';
+  return `<m:${name}>${wrap('e', convert(base))}${wrap('lim', convert(first))}</m:${name}>`;
+}
+
+function space(node) {
+  const match = /^(-?[\d.]+)em$/.exec(node.attributes.width || '');
+  const width = match ? parseFloat(match[1]) : 0;
+  if (width <= 0) return '';
+  // Thin, medium, en and em spaces stand for the widths TeX puts between symbols.
+  const character = width < 0.2 ? ' ' : width < 0.3 ? ' ' : width < 0.75 ? ' ' : ' ';
+  return mathRun(width >= 1.5 ? character.repeat(Math.round(width)) : character, { style: 'p' });
+}
+
+/**
+ * One MathML element as Office Math.
+ * @param {Object} node
+ * @returns {string}
+ */
+function convert(node) {
+  if (!node || !node.name) return '';
+  const children = elements(node);
+  const [first, second, third] = children;
+  switch (node.name) {
+    case 'math':
+    case 'semantics':
+      // What is drawn, without the TeX source kept beside it.
+      return sequence(children.filter(child => !/^annotation/.test(child.name)));
+    case 'mrow':
+      if (children.length >= 2 && isFence(children[0]) && isFence(children[children.length - 1])) return delimited(children);
+      return sequence(children);
+    case 'mstyle':
+    case 'mpadded':
+    case 'mtd':
+    case 'merror':
+    case 'menclose':
+      if (node.name === 'menclose' && /\bbox\b/.test(node.attributes.notation || '')) return `<m:borderBox>${wrap('e', sequence(children))}</m:borderBox>`;
+      return sequence(children);
+    case 'mphantom':
+      return `<m:phant>${wrap('e', sequence(children))}</m:phant>`;
+    case 'mi':
+      return identifierRun(node);
+    case 'mn':
+      return mathRun(textOf(node), { style: 'p' });
+    case 'mo':
+      return mathRun(textOf(node), { style: 'p' });
+    case 'mtext':
+    case 'ms':
+      return mathRun(textOf(node), { style: 'p', normalText: true });
+    case 'mspace':
+      return space(node);
+    case 'mfrac': {
+      const thickness = node.attributes.linethickness;
+      const noBar = thickness !== undefined && parseFloat(thickness) === 0;
+      return `<m:f>${noBar ? `<m:fPr>${property('type', 'noBar')}</m:fPr>` : ''}${wrap('num', convert(first))}${wrap('den', convert(second))}</m:f>`;
+    }
+    case 'msqrt':
+      return `<m:rad><m:radPr>${property('degHide', '1')}</m:radPr><m:deg/>${wrap('e', sequence(children))}</m:rad>`;
+    case 'mroot':
+      return `<m:rad>${wrap('deg', convert(second))}${wrap('e', convert(first))}</m:rad>`;
+    case 'msup':
+      if (isNary(node)) return nary(node, '');
+      return `<m:sSup>${wrap('e', convert(first))}${wrap('sup', convert(second))}</m:sSup>`;
+    case 'msub':
+      if (isNary(node)) return nary(node, '');
+      return `<m:sSub>${wrap('e', convert(first))}${wrap('sub', convert(second))}</m:sSub>`;
+    case 'msubsup':
+      if (isNary(node)) return nary(node, '');
+      return `<m:sSubSup>${wrap('e', convert(first))}${wrap('sub', convert(second))}${wrap('sup', convert(third))}</m:sSubSup>`;
+    case 'munder':
+    case 'mover':
+    case 'munderover':
+      return underOver(node);
+    case 'mtable':
+      return table(node);
+    default:
+      // Anything else: what it holds.
+      return sequence(children);
+  }
+}
+
+/**
+ * A formula as Office Math, for a Word document.
+ * @param {Object} math What parseMathml returned
+ * @param {boolean} display On a line of its own: an equation paragraph, not one inside the text
+ * @param {string} [align] Where an equation paragraph sits: `center`, `left` or `right`
+ * @returns {string} an `m:oMath`, or an `m:oMathPara` holding one
+ */
+function mathmlToOmml(math, display, align = 'center') {
+  const body = `<m:oMath>${convert(math)}</m:oMath>`;
+  return display ? `<m:oMathPara><m:oMathParaPr>${property('jc', align)}</m:oMathParaPr>${body}</m:oMathPara>` : body;
+}
+
+module.exports = {
+  mathmlToOmml,
+  parseMathml,
+  serializeMathml
 };
   },
   "zip": function (module, exports, require) {

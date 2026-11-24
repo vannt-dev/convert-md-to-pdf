@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const hljs = require('highlight.js/lib/common');
 const { buildDocument, collectHeadings, isPortableLink, plainText } = require('./docmodel');
 const { readLocalImage } = require('./images');
+const { serializeMathml } = require('./omml');
 const { createZip } = require('./zip');
 
 /**
@@ -12,8 +13,10 @@ const { createZip } = require('./zip');
  * The book is split into one file per top-level heading, with a navigation
  * document (and an NCX for older readers) built from the headings. Local
  * images are embedded; an image on the web is replaced by a link to it, since
- * a reader may be offline. Themes, custom CSS, Mermaid and KaTeX are not
- * carried over: a reading system applies its own typography.
+ * a reader may be offline. Mermaid diagrams become pictures and LaTeX formulas
+ * MathML when `options.media` has them drawn (see docmodel's mediaLookup); without
+ * it a diagram is kept as its source and a formula as typed. Themes and custom
+ * CSS are not carried over: a reading system applies its own typography.
  */
 
 function xml(text) {
@@ -33,6 +36,8 @@ h3 { font-size: 1.2em; }
 p { margin: 0.6em 0; }
 a { color: #0b57d0; }
 img { max-width: 100%; height: auto; }
+figure.diagram { margin: 1em 0; text-align: center; }
+div.math { margin: 0.8em 0; text-align: center; }
 code { font-family: monospace; font-size: 0.9em; background: #f2f2f2; padding: 0.1em 0.25em; }
 pre { background: #f5f5f5; padding: 0.8em; white-space: pre-wrap; word-wrap: break-word; font-size: 0.85em; }
 pre code { background: none; padding: 0; font-size: 1em; }
@@ -57,9 +62,10 @@ nav ol { list-style: none; padding-left: 1.2em; }
 `;
 
 class EpubWriter {
-  constructor(document, baseDir) {
+  constructor(document, baseDir, media) {
     this.document = document;
     this.baseDir = baseDir;
+    this.media = media || { diagram: () => null, formula: () => null };
     this.images = [];
     this.imagePaths = new Map();
     // Where each heading ends up, so a link to `#slug` can name the right file.
@@ -104,6 +110,7 @@ class EpubWriter {
         let html;
         if (run.lineBreak) return '<br/>';
         if (run.image) html = this.image(run);
+        else if (run.math) html = this.formula(run.math.tex, run.math.display, false) || xml(run.math.raw);
         else html = xml(run.text);
         if (run.code) html = `<code>${html}</code>`;
         if (run.sup) html = `<sup>${html}</sup>`;
@@ -117,6 +124,21 @@ class EpubWriter {
         return html;
       })
       .join('');
+  }
+
+  /** A drawn formula as MathML, or null when it was not drawn. */
+  formula(tex, display, block) {
+    const math = this.media.formula(tex, display);
+    return math ? serializeMathml(math, block) : null;
+  }
+
+  diagram(block) {
+    const image = this.media.diagram(block.text);
+    if (!image) return this.code({ lang: 'mermaid', text: block.text });
+    const name = `images/diagram-${this.images.length + 1}.${image.extension}`;
+    this.images.push({ name, data: image.data, mediaType: image.mediaType });
+    // The source is the description: what a reader that cannot show pictures can tell of it.
+    return `<figure class="diagram"><img src="${name}" width="${image.size.width}" alt="${xml(block.text.trim()).replace(/\r?\n/g, '&#10;')}"/></figure>\n`;
   }
 
   code(block) {
@@ -141,6 +163,14 @@ class EpubWriter {
         case 'code':
           output += this.code(block);
           break;
+        case 'diagram':
+          output += this.diagram(block);
+          break;
+        case 'math': {
+          const math = this.formula(block.tex, true, true);
+          output += math ? `<div class="math">${math}</div>\n` : `<p>${xml(block.raw)}</p>\n`;
+          break;
+        }
         case 'quote':
           output += `<blockquote>\n${this.blocks(block.blocks) || '<p></p>\n'}</blockquote>\n`;
           break;
@@ -285,7 +315,10 @@ class EpubWriter {
       '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>',
       '<item id="css" href="style.css" media-type="text/css"/>',
       ...(cover ? ['<item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>'] : []),
-      ...pages.map((page, index) => `<item id="chapter-${index + 1}" href="${page.name}" media-type="application/xhtml+xml"/>`),
+      // A page with formulas says so, for the reading systems that draw MathML.
+      ...pages.map((page, index) =>
+        `<item id="chapter-${index + 1}" href="${page.name}" media-type="application/xhtml+xml"${page.data.includes('<math ') ? ' properties="mathml"' : ''}/>`
+      ),
       ...this.images.map((image, index) => `<item id="image-${index + 1}" href="${xml(image.name)}" media-type="${image.mediaType}"/>`)
     ];
     const spine = [
@@ -326,11 +359,12 @@ class EpubWriter {
 /**
  * Converts Markdown to the bytes of an .epub file.
  * @param {string} rawMarkdown
- * @param {Object} [options] The converter's options, plus `baseDir`: the folder images are relative to
+ * @param {Object} [options] The converter's options, plus `baseDir`: the folder images are relative to,
+ *   and `media`: the diagrams and formulas drawn beforehand (docmodel's mediaLookup)
  * @returns {Buffer}
  */
 function markdownToEpub(rawMarkdown, options = {}) {
-  return new EpubWriter(buildDocument(rawMarkdown, options), options.baseDir).build();
+  return new EpubWriter(buildDocument(rawMarkdown, options), options.baseDir, options.media).build();
 }
 
 module.exports = {

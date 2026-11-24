@@ -3,6 +3,8 @@ const { marked } = require('marked');
 const { parseFrontMatter } = require('./frontmatter');
 const { applyFootnotes } = require('./footnotes');
 const { preprocessMarkdown } = require('./preprocess');
+const { protectMath } = require('./math');
+const { parseMathml } = require('./omml');
 
 /**
  * A format-neutral model of a Markdown document, for the exporters that do
@@ -16,12 +18,18 @@ const { preprocessMarkdown } = require('./preprocess');
  *   { type: 'list', ordered, start, items: [{ checked, blocks }] }
  *   { type: 'table', header: [{ align, runs }], rows: [[{ align, runs }]] }
  *   { type: 'rule' } | { type: 'pageBreak' }
+ *   { type: 'diagram', text }        a Mermaid diagram, as its source
+ *   { type: 'math', tex, raw }       a formula on lines of its own
  *
  * Runs are flat: nested emphasis becomes flags on each piece of text, so a
  * writer never has to balance tags.
  *   { text, bold, italic, strike, code, sup, sub, href }
  *   { image: { src, alt }, href } | { lineBreak: true }
+ *   { math: { tex, display, raw }, ... }  a formula in the text; `raw` is how it was typed
  */
+
+// The stand-ins math.js `protectMath` puts in place of the formulas while Markdown is parsed.
+const STAND_IN = /\uE000(\d+)\uE001/g;
 
 const NAMED_ENTITIES = {
   amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', copy: '©', reg: '®',
@@ -77,8 +85,9 @@ function attribute(source, name) {
  * Collects the runs of one block. Raw HTML is reduced to what it means for
  * the text: emphasis, line breaks, links and images are kept, any other tag
  * is dropped and its content stays.
+ * @param {Object[]} formulas What the math stand-ins in the text hold (math.js protectMath)
  */
-function createRunCollector() {
+function createRunCollector(formulas) {
   const runs = [];
   const flags = { bold: 0, italic: 0, strike: 0, code: 0, sup: 0, sub: 0 };
   // Raw <a> elements still open: a link target, or null for one whose text is skipped.
@@ -95,14 +104,32 @@ function createRunCollector() {
     return run;
   };
 
-  const pushText = (text, style) => {
-    if (!text || skipping > 0) return;
+  const pushPlain = (text, style) => {
+    if (!text) return;
     const run = { text, ...styleNow(style) };
     const previous = runs[runs.length - 1];
     // Neighbouring pieces that look the same are one run.
     if (previous && previous.text !== undefined && sameStyle(previous, run)) previous.text += text;
     else runs.push(run);
   };
+
+  const pushText = (text, style) => {
+    if (!text || skipping > 0) return;
+    // In code a formula is the text it was typed as; `\$` is a dollar sign.
+    const verbatim = style.code || flags.code > 0;
+    let last = 0;
+    for (const match of text.matchAll(STAND_IN)) {
+      const item = formulas[match[1]];
+      if (!item) continue;
+      pushPlain(text.slice(last, match.index), style);
+      last = match.index + match[0].length;
+      if (verbatim || item.dollar) pushPlain(verbatim ? item.raw : '$', style);
+      else runs.push({ math: { tex: item.tex, display: item.display, raw: item.raw }, ...styleNow(style) });
+    }
+    pushPlain(text.slice(last), style);
+  };
+  // An address or a description: formulas in it are kept as typed.
+  const written = text => restoreFormulas(text, formulas);
 
   const pushHtml = (html, style) => {
     let last = 0;
@@ -122,7 +149,7 @@ function createRunCollector() {
       } else if (tag === 'img' && !closing) {
         const src = attribute(attributes, 'src');
         if (src && skipping === 0) {
-          runs.push({ image: { src, alt: attribute(attributes, 'alt') || '' }, ...styleNow(style) });
+          runs.push({ image: { src: written(src), alt: written(attribute(attributes, 'alt') || '') }, ...styleNow(style) });
         }
       } else if (tag === 'a') {
         if (closing) {
@@ -135,7 +162,7 @@ function createRunCollector() {
         } else {
           const href = attribute(attributes, 'href');
           // A footnote number stays a number; its target is a list item further down.
-          anchors.push({ href: href && !/^#fn-?/.test(href) ? href : null });
+          anchors.push({ href: href && !/^#fn-?/.test(href) ? written(href) : null });
         }
       }
     }
@@ -150,9 +177,9 @@ function createRunCollector() {
         case 'del': walk(token.tokens, { ...style, strike: true }); break;
         case 'codespan': pushText(decodeEntities(token.text), { ...style, code: true }); break;
         case 'br': if (skipping === 0) runs.push({ lineBreak: true }); break;
-        case 'link': walk(token.tokens, { ...style, href: token.href }); break;
+        case 'link': walk(token.tokens, { ...style, href: written(token.href) }); break;
         case 'image':
-          if (skipping === 0) runs.push({ image: { src: token.href, alt: token.text || '' }, ...styleNow(style) });
+          if (skipping === 0) runs.push({ image: { src: written(token.href), alt: written(token.text || '') }, ...styleNow(style) });
           break;
         case 'html': pushHtml(token.text, style); break;
         case 'checkbox': break;
@@ -174,14 +201,20 @@ function sameStyle(a, b) {
   return true;
 }
 
-function inlineRuns(tokens) {
-  const collector = createRunCollector();
+/** Text with the math stand-ins put back as the formulas were typed. */
+function restoreFormulas(text, formulas) {
+  if (!formulas.length || !text) return text;
+  return text.replace(STAND_IN, (all, index) => (formulas[index] ? formulas[index].raw : all));
+}
+
+function inlineRuns(tokens, formulas) {
+  const collector = createRunCollector(formulas);
   collector.walk(tokens, {});
   return trimRuns(collector.runs);
 }
 
-function htmlRuns(html) {
-  const collector = createRunCollector();
+function htmlRuns(html, formulas) {
+  const collector = createRunCollector(formulas);
   collector.pushHtml(html, {});
   return trimRuns(collector.runs);
 }
@@ -213,10 +246,18 @@ function isPortableLink(href) {
 
 /** The text of a list of runs, for slugs, titles and alt text. */
 function plainText(runs) {
-  return runs.map(run => (run.text !== undefined ? run.text : run.image ? run.image.alt : ' ')).join('');
+  return runs
+    .map(run => (run.text !== undefined ? run.text : run.image ? run.image.alt : run.math ? run.math.tex : ' '))
+    .join('');
 }
 
-function toBlocks(tokens, slug) {
+/**
+ * @param {Object[]} tokens marked's tokens
+ * @param {{ slug: Function, formulas: Object[], diagrams: boolean }} context How headings get
+ *   their ids, what the math stand-ins hold, and whether Mermaid code is a diagram
+ */
+function toBlocks(tokens, context) {
+  const { slug, formulas } = context;
   const blocks = [];
   for (const token of tokens || []) {
     switch (token.type) {
@@ -224,15 +265,20 @@ function toBlocks(tokens, slug) {
       case 'def':
         break;
       case 'heading': {
-        const runs = inlineRuns(token.tokens);
+        const runs = inlineRuns(token.tokens, formulas);
         blocks.push({ type: 'heading', depth: token.depth, id: slug(plainText(runs), `heading-${blocks.length + 1}`), runs });
         break;
       }
-      case 'code':
-        blocks.push({ type: 'code', lang: (token.lang || '').trim().split(/\s+/)[0], text: token.text || '' });
+      case 'code': {
+        const lang = (token.lang || '').trim().split(/\s+/)[0];
+        // Indented code is not passed over when the formulas are taken out.
+        const text = restoreFormulas(token.text || '', formulas);
+        if (lang === 'mermaid' && context.diagrams && text.trim()) blocks.push({ type: 'diagram', text });
+        else blocks.push({ type: 'code', lang, text });
         break;
+      }
       case 'blockquote':
-        blocks.push({ type: 'quote', blocks: toBlocks(token.tokens, slug) });
+        blocks.push({ type: 'quote', blocks: toBlocks(token.tokens, context) });
         break;
       case 'list':
         blocks.push({
@@ -241,12 +287,12 @@ function toBlocks(tokens, slug) {
           start: Number.isInteger(token.start) ? token.start : 1,
           items: token.items.map(item => ({
             checked: item.task ? Boolean(item.checked) : null,
-            blocks: toBlocks(item.tokens, slug)
+            blocks: toBlocks(item.tokens, context)
           }))
         });
         break;
       case 'table': {
-        const cell = (source, index) => ({ align: token.align[index] || null, runs: inlineRuns(source.tokens) });
+        const cell = (source, index) => ({ align: token.align[index] || null, runs: inlineRuns(source.tokens, formulas) });
         blocks.push({ type: 'table', header: token.header.map(cell), rows: token.rows.map(row => row.map(cell)) });
         break;
       }
@@ -260,14 +306,17 @@ function toBlocks(tokens, slug) {
           // The notes follow as an ordinary numbered list; a rule sets them apart.
           blocks.push({ type: 'rule' });
         } else {
-          const runs = htmlRuns(token.text);
+          const runs = htmlRuns(token.text, formulas);
           if (runs.length) blocks.push({ type: 'paragraph', runs });
         }
         break;
       }
       default: {
-        const runs = inlineRuns(token.tokens || [token]);
-        if (runs.length) blocks.push({ type: 'paragraph', runs });
+        const runs = inlineRuns(token.tokens || [token], formulas);
+        const only = runs.length === 1 && runs[0].math && !runs[0].href ? runs[0].math : null;
+        // A display formula on lines of its own takes the place of its paragraph.
+        if (only && only.display) blocks.push({ type: 'math', tex: only.tex, raw: only.raw });
+        else if (runs.length) blocks.push({ type: 'paragraph', runs });
       }
     }
   }
@@ -297,12 +346,18 @@ function buildDocument(rawMarkdown = '', options = {}) {
     margin: options.margin || frontMatter.margin || '14mm 12mm 16mm 12mm',
     toc: options.toc !== undefined ? options.toc : Boolean(frontMatter.toc),
     cover: options.cover !== undefined ? options.cover : Boolean(frontMatter.cover),
-    highlight: options.highlight !== undefined ? options.highlight : frontMatter.highlight !== false
+    highlight: options.highlight !== undefined ? options.highlight : frontMatter.highlight !== false,
+    // As in the PDF: `--no-katex` and `--no-mermaid`, or `katex: false` and `mermaid: false`.
+    math: options.katex !== undefined ? options.katex !== false : frontMatter.katex !== false,
+    diagrams: options.mermaid !== undefined ? options.mermaid !== false : frontMatter.mermaid !== false
   };
 
-  const processed = preprocessMarkdown(applyFootnotes(content));
+  // The formulas are taken out first, as for the PDF, so that Markdown cannot change them.
+  const math = settings.math ? protectMath(content) : null;
+  const processed = preprocessMarkdown(applyFootnotes(math ? math.text : content), { mathProtected: Boolean(math) });
   const tokens = marked.lexer(processed, { gfm: true, breaks: true });
-  return { meta, blocks: toBlocks(tokens, createSlugger()), settings };
+  const context = { slug: createSlugger(), formulas: math ? math.formulas : [], diagrams: settings.diagrams };
+  return { meta, blocks: toBlocks(tokens, context), settings };
 }
 
 /** Every heading of the document, at any depth of nesting, in order. */
@@ -315,10 +370,75 @@ function collectHeadings(blocks, found = []) {
   return found;
 }
 
+/**
+ * The diagrams and formulas of a document, each once, for whatever draws them before a writer
+ * runs: the CLI's headless browser, or the extension's page.
+ * @param {Object[]} blocks
+ * @returns {{ diagrams: string[], formulas: { tex: string, display: boolean }[] }}
+ */
+function collectMedia(blocks) {
+  const diagrams = new Set();
+  const formulas = new Map();
+  const addRuns = runs => {
+    for (const run of runs) {
+      if (run.math) formulas.set(mathKey(run.math.tex, run.math.display), { tex: run.math.tex, display: run.math.display });
+    }
+  };
+  const walk = list => {
+    for (const block of list) {
+      if (block.type === 'diagram') diagrams.add(block.text);
+      else if (block.type === 'math') formulas.set(mathKey(block.tex, true), { tex: block.tex, display: true });
+      else if (block.runs) addRuns(block.runs);
+      else if (block.type === 'quote') walk(block.blocks);
+      else if (block.type === 'list') block.items.forEach(item => walk(item.blocks));
+      else if (block.type === 'table') [block.header, ...block.rows].forEach(row => row.forEach(cell => addRuns(cell.runs)));
+    }
+  };
+  walk(blocks);
+  return { diagrams: [...diagrams], formulas: [...formulas.values()] };
+}
+
+/** How a drawn formula is looked up: the same TeX can be drawn inline and on a line of its own. */
+function mathKey(tex, display) {
+  return `${display ? 'D' : 'I'}:${tex}`;
+}
+
+/**
+ * What the writers look the drawn diagrams and formulas up in.
+ * @param {{ diagrams: string[], formulas: { tex: string, display: boolean }[] }} jobs What
+ *   collectMedia found
+ * @param {{ diagrams: Object[], formulas: Object[] }} results What media.js renderMedia drew for
+ *   them, in the same order; one that failed carries an `error` and is left out
+ * @returns {{ diagram: (text: string) => Object | null, formula: (tex: string, display: boolean) => Object | null }}
+ *   a diagram as an image (`{ data, extension, mediaType, size }`), a formula as parsed MathML
+ */
+function mediaLookup(jobs, results = {}) {
+  const diagrams = new Map();
+  const formulas = new Map();
+  jobs.diagrams.forEach((text, index) => {
+    const drawn = (results.diagrams || [])[index];
+    if (!drawn || !drawn.png || !(drawn.width > 0) || !(drawn.height > 0)) return;
+    const data = Uint8Array.from(atob(drawn.png), character => character.charCodeAt(0));
+    diagrams.set(text, { data, extension: 'png', mediaType: 'image/png', size: { width: drawn.width, height: drawn.height } });
+  });
+  jobs.formulas.forEach((formula, index) => {
+    const drawn = (results.formulas || [])[index];
+    const math = drawn && drawn.mathml ? parseMathml(drawn.mathml) : null;
+    if (math) formulas.set(mathKey(formula.tex, formula.display), math);
+  });
+  return {
+    diagram: text => diagrams.get(text) || null,
+    formula: (tex, display) => formulas.get(mathKey(tex, display)) || null
+  };
+}
+
 module.exports = {
   buildDocument,
   collectHeadings,
+  collectMedia,
   decodeEntities,
   isPortableLink,
+  mathKey,
+  mediaLookup,
   plainText
 };
