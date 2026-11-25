@@ -35,6 +35,7 @@ const CONFIG_KEYS = {
   katex: BOOLEAN,
   highlight: BOOLEAN,
   include: BOOLEAN,
+  obsidian: BOOLEAN,
   outline: BOOLEAN,
   strict: BOOLEAN,
   browser: STRING

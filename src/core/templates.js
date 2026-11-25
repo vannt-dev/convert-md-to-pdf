@@ -126,6 +126,10 @@ function getHtmlTemplate({ title, author = '', language = 'en', bodyHtml, option
     .footnotes ol { margin: 0; padding-left: 1.6em; }
     .footnotes li { margin: 3px 0; }
 
+    /* Obsidian syntax (obsidian.js); the text colour is set so it reads on the dark themes too */
+    mark { background: #fff3a3; color: #1f2328; padding: 0 0.15em; border-radius: 2px; }
+    .wikilink-unresolved { opacity: 0.65; border-bottom: 1px dashed currentColor; }
+
     img {
       max-width: 100% !important;
       height: auto !important;

@@ -9,7 +9,7 @@ const path = require('path');
 // `npm run fetch:libs` writes the file; a test checks that it matches this output.
 
 const coreDir = path.join(__dirname, '..', 'src', 'core');
-const MODULES = ['docx-browser', 'docx', 'docmodel', 'frontmatter', 'footnotes', 'preprocess', 'math', 'omml', 'zip'];
+const MODULES = ['docx-browser', 'docx', 'docmodel', 'frontmatter', 'footnotes', 'preprocess', 'math', 'obsidian', 'omml', 'zip'];
 const STAND_INS = {
   marked: 'module.exports = scope.marked;',
   images: 'module.exports = { readLocalImage: function () { return null; } };',

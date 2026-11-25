@@ -46,10 +46,10 @@ for (const font of fonts) {
 }
 console.log(`✔ fonts/ (${fonts.length} KaTeX woff2 fonts)`);
 
-for (const shared of ['footnotes.js', 'pagemarks.js', 'math.js', 'media.js']) {
+for (const shared of ['footnotes.js', 'pagemarks.js', 'math.js', 'media.js', 'obsidian.js']) {
   fs.copyFileSync(path.join(root, 'src/core', shared), path.join(libDir, shared));
 }
-console.log('✔ footnotes.js, pagemarks.js, math.js, media.js (from src/core)');
+console.log('✔ footnotes.js, pagemarks.js, math.js, media.js, obsidian.js (from src/core)');
 
 // The Word export: the CLI's writer and the core modules it needs, in one script.
 fs.writeFileSync(path.join(libDir, 'docx-export.js'), require('./bundle-docx').bundleDocx());

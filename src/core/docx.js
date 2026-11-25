@@ -96,6 +96,7 @@ class DocxWriter {
     if (run.bold) properties += '<w:b/>';
     if (run.italic) properties += '<w:i/>';
     if (run.strike) properties += '<w:strike/>';
+    if (run.mark) properties += '<w:highlight w:val="yellow"/>';
     if (run.sup) properties += '<w:vertAlign w:val="superscript"/>';
     else if (run.sub) properties += '<w:vertAlign w:val="subscript"/>';
     return properties ? `<w:rPr>${properties}</w:rPr>` : '';

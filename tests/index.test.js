@@ -1642,6 +1642,272 @@ Text`, { toc: true });
     fs.rmSync(strictDir, { recursive: true, force: true });
   });
 
+  // Obsidian syntax: ==highlight==, [[wikilinks]], ![[embeds]] and callouts (src/core/obsidian.js).
+  const obsidianSyntax = require('../src/core/obsidian');
+  const body = html => html.slice(html.indexOf('<body'));
+
+  test('obsidian: ==highlight== is marked; a == b, ===, code spans and code blocks stay as written', () => {
+    const html = body(parseMarkdownToHtml(
+      '# T\n\nA ==bright **bold** idea== here; a == b, x ==== y.\n\nUse `==x==` and `[[x]]`.\n\n' +
+      '```js\nif (a == b) { list[[0]] = "==x=="; }\n```\n\n    indented ==x== [[y]] ![[z.png]]\n'
+    ));
+    assert.ok(html.includes('<mark>bright <strong>bold</strong> idea</mark>'), html);
+    assert.ok(html.includes('a == b, x ==== y.'));
+    assert.ok(html.includes('<code>==x==</code>') && html.includes('<code>[[x]]</code>'));
+    assert.ok(html.includes('list[[') && html.includes('&quot;==x==&quot;'), html);
+    assert.ok(html.includes('indented ==x== [[y]] ![[z.png]]'));
+    assert.strictEqual((html.match(/<mark>/g) || []).length, 1);
+    assert.ok(!html.includes('wikilink') && !html.includes('obsidian-embed'));
+  });
+
+  test('obsidian: wikilinks without a vault lead to headings of the document, other notes are muted text', () => {
+    const html = body(parseMarkdownToHtml(
+      '# Intro\n\n## Second Part\n\nSee [[#Second Part]], [[#Second Part|there]], [[Other note]], ' +
+      '[[Other note#Sec|alias]] and [[#Nowhere]].\n'
+    ));
+    // The link gives the headings their anchors, as --toc would.
+    assert.ok(html.includes('<h2 id="second-part">'), html);
+    assert.ok(html.includes('<a class="wikilink" href="#second-part">Second Part</a>'));
+    assert.ok(html.includes('<a class="wikilink" href="#second-part">there</a>'));
+    assert.ok(html.includes('<span class="wikilink wikilink-unresolved">Other note</span>'));
+    assert.ok(html.includes('<span class="wikilink wikilink-unresolved">alias</span>'));
+    assert.ok(html.includes('<span class="wikilink">Nowhere</span>'));
+    // The text is escaped.
+    assert.ok(body(parseMarkdownToHtml('[[x|a "q" <i>]]')).includes('>a &quot;q&quot; &lt;i&gt;</span>'));
+  });
+
+  test('obsidian: plain Markdown is unchanged: links, task lists, footnotes, alerts, reference links', () => {
+    const plain = [
+      fs.readFileSync(path.join(__dirname, '..', 'examples', 'sample.md'), 'utf8'),
+      '# Doc\n\n[link](https://example.com) [[1]](https://x.y/1) [[a]][ref] [x] ![[alt]](pic.png)\n\n[ref]: https://ref.example\n',
+      'Cited [[7]] and [[Two  words]].\n\n[7]: https://cite.example/7\n[two words]: https://cite.example/2\n',
+      '> [!NOTE] Same line\n> next\n\n> [!TIP] Tip text\n',
+      '- [ ] open\n- [x] done\n\nNote[^1].\n\n[^1]: The note.\n\n> [!NOTE]\n> GitHub alert\n\n> [!WARNING]\n> Careful\n',
+      'Math $a == b$ and $$x == y$$ stay math; prices $5 and $10.\n\n```\n[[code]] ==code== ![[code.png]]\n```\n'
+    ].join('\n\n');
+    for (const options of [{}, { toc: true }, { cover: true, katex: false }]) {
+      assert.strictEqual(
+        parseMarkdownToHtml(plain, { ...options, obsidian: true }),
+        parseMarkdownToHtml(plain, { ...options, obsidian: false })
+      );
+    }
+    const html = body(parseMarkdownToHtml(plain));
+    assert.ok(html.includes('<a href="https://x.y/1">[1]</a>'), html);
+    assert.ok(html.includes('<a href="https://ref.example">[a]</a>'));
+    assert.ok(html.includes('<img src="pic.png" alt="[alt]">'), html);
+    assert.ok(html.includes('<a href="https://cite.example/7">7</a>') && html.includes('https://cite.example/2'));
+    assert.ok(html.includes('<input checked="" disabled="" type="checkbox"> done'));
+  });
+
+  test('obsidian: picture embeds take a size and alt text; [[a\\|b]] works in a table', () => {
+    const html = body(parseMarkdownToHtml(
+      '![[my pic.png]] ![[img/a.jpg|300]] ![[b.png|A caption|40x20]] ![[c.webp|wide]]\n\n' +
+      '| Link | Mark |\n| --- | --- |\n| [[#T\\|go]] | ==hot== |\n'
+    ));
+    assert.ok(html.includes('<img class="obsidian-embed" src="my%20pic.png" alt="my pic.png">'), html);
+    assert.ok(html.includes('<img class="obsidian-embed" src="img/a.jpg" alt="a.jpg" width="300">'));
+    assert.ok(html.includes('<img class="obsidian-embed" src="b.png" alt="A caption" width="40" height="20">'));
+    assert.ok(html.includes('alt="wide"'));
+    assert.ok(/<td><span class="wikilink">go<\/span><\/td>\s*<td><mark>hot<\/mark><\/td>/.test(html), html);
+  });
+
+  test('obsidian: callouts get their icon and title; GitHub alerts look as before; code is left alone', () => {
+    const html = body(parseMarkdownToHtml(
+      '> [!tip] Remember this\n> The body.\n\n> [!warning]- Folded\n> Hidden\n\n> [!question]\n> Why?\n\n' +
+      '> [!NOTE]\n> GitHub style\n\n```md\n> [!tip] In code\n```\n'
+    ));
+    assert.ok(html.includes('<strong>💡 Remember this</strong><br>The body.'), html);
+    assert.ok(html.includes('<strong>⚠️ Folded</strong><br>Hidden'));
+    assert.ok(html.includes('<strong>❓ Question</strong><br>Why?'));
+    assert.ok(html.includes('<strong>ℹ️ NOTE:</strong> GitHub style'));
+    assert.ok(html.includes('&gt; [!tip] In code'));
+  });
+
+  test('obsidian: off by option or front matter, an option wins', () => {
+    const source = '# T\n\n==hi== [[#T]] ![[a.png]]\n\n> [!tip] Title\n';
+    for (const html of [
+      parseMarkdownToHtml(source, { obsidian: false }),
+      parseMarkdownToHtml(`---\nobsidian: false\n---\n${source}`)
+    ]) {
+      assert.ok(body(html).includes('==hi== [[#T]] ![[a.png]]'), html);
+      assert.ok(body(html).includes('[!tip] Title'));
+      assert.ok(body(html).includes('<h1 id="heading-1">'));
+    }
+    assert.ok(parseMarkdownToHtml(`---\nobsidian: false\n---\n${source}`, { obsidian: true }).includes('<mark>hi</mark>'));
+  });
+
+  test('obsidian: Word and EPUB keep highlights, wikilinks and picture embeds', () => {
+    const AdmZip = require('adm-zip');
+    const source = '# Start\n\n## Next Step\n\nA ==hot== word, [[#Next Step|on]] and [[Elsewhere]]. `==no==`\n\n![[pic.png|200]]\n';
+    const { blocks } = buildDocument(source, {});
+    const runs = blocks[2].runs;
+    assert.deepStrictEqual(runs.find(run => run.mark), { text: 'hot', mark: true });
+    assert.deepStrictEqual(runs.find(run => run.href), { text: 'on', href: '#next-step' });
+    assert.ok(runs.some(run => run.text && run.text.includes('Elsewhere')));
+    assert.deepStrictEqual(runs.find(run => run.code), { text: '==no==', code: true });
+    assert.deepStrictEqual(blocks[3].runs, [{ image: { src: 'pic.png', alt: 'pic.png' } }]);
+    assert.ok(!buildDocument(source, { obsidian: false }).blocks[2].runs.some(run => run.mark || run.href));
+
+    const picDir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-pdf-obsidian-'));
+    fs.writeFileSync(path.join(picDir, 'pic.png'), png);
+    const docx = new AdmZip(markdownToDocx(source, { baseDir: picDir })).readAsText('word/document.xml');
+    assert.ok(/<w:highlight w:val="yellow"\/><\/w:rPr><w:t xml:space="preserve">hot<\/w:t>/.test(docx), docx);
+    assert.ok(docx.includes('<w:hyperlink w:anchor="h_next_step"'));
+    assert.ok(docx.includes('<w:drawing>'), 'the picture beside the file is embedded');
+
+    const epub = new AdmZip(markdownToEpub(source, { baseDir: picDir }));
+    const chapters = epub.getEntries().filter(entry => entry.entryName.endsWith('.xhtml')).map(entry => entry.getData().toString('utf8')).join('');
+    assert.ok(chapters.includes('<mark>hot</mark>'));
+    assert.ok(/<a href="[^"]*#next-step">on<\/a>/.test(chapters), chapters);
+    assert.ok(epub.getEntries().some(entry => /images\/.*\.png$/.test(entry.entryName)));
+    fs.rmSync(picDir, { recursive: true, force: true });
+  });
+
+  // A vault: notes that link to and embed each other, and pictures in an attachments folder.
+  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-pdf-vault-'));
+  const vaultWrite = (name, text) => {
+    const file = path.join(vaultDir, name);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text);
+    return file;
+  };
+  fs.mkdirSync(path.join(vaultDir, '.obsidian'));
+  const vaultMain = vaultWrite(
+    'notes/Main.md',
+    '# Main\n\nSee [[Sibling]], [[Sibling#Part Two|part two]], [[Embedded]], [[Missing note]] and [[#Main]].\n\n' +
+      '![[Embedded]]\n\n![[Sibling#Part Two]]\n\n![[photo one.png|120]] ![[logo.png]] ![[gone.png]]\n\n' +
+      '```\n![[Embedded]]\n```\n\nInline ![[Sibling]] stays a link.\n'
+  );
+  vaultWrite('notes/Embedded.md', '---\ntitle: skipped\n---\n# Embedded Title\n\nEmbedded ==text==.\n\n![[Main]]\n');
+  vaultWrite('notes/Sibling.md', '# Sibling\n\nIntro.\n\n## Part Two\n\nSecond part.\n\n### Deeper\n\nStill two.\n\n## Part Three\n\nNot this.\n');
+  vaultWrite('notes/Chain1.md', '# C1\n\n![[Chain2]]\n');
+  vaultWrite('notes/Chain2.md', '# C2\n\n![[Chain3]]\n');
+  vaultWrite('notes/Chain3.md', '# C3\n\n![[Chain4]]\n');
+  vaultWrite('notes/Chain4.md', '# C4\n\nToo deep.\n');
+  vaultWrite('notes/photo one.png', png);
+  vaultWrite('attachments/logo.png', png);
+
+  test('obsidian: ![[Note]] puts the note in; a section, a loop, depth > 3 and a missing note are handled', () => {
+    const source = fs.readFileSync(vaultMain, 'utf8');
+    const { content, files, origins } = expandIncludes(source, vaultMain, { embeds: true });
+    assert.ok(content.includes('\n# Embedded Title\n\nEmbedded ==text==.\n'), content);
+    assert.ok(!content.includes('title: skipped'));
+    // The note that embeds Main back is not put in twice: that line stays a link.
+    assert.strictEqual((content.match(/^# Main$/gm) || []).length, 1);
+    assert.ok(content.includes('\n![[Main]]\n'));
+    // Only the section asked for, with its subsections.
+    assert.ok(content.includes('## Part Two\n\nSecond part.\n\n### Deeper\n\nStill two.\n'));
+    assert.ok(!content.includes('Not this.') && !content.includes('Intro.'));
+    // Code blocks and embeds inside a sentence are left alone.
+    assert.ok(content.includes('```\n![[Embedded]]\n```'));
+    assert.ok(content.includes('Inline ![[Sibling]] stays a link.'));
+    assert.deepStrictEqual(files.map(file => path.basename(file)).sort(), ['Embedded.md', 'Sibling.md']);
+    const embeddedLine = content.split('\n').indexOf('Embedded ==text==.');
+    assert.deepStrictEqual(origins[embeddedLine], { file: path.join(vaultDir, 'notes', 'Embedded.md'), line: 6 });
+
+    const chain = path.join(vaultDir, 'notes', 'Chain1.md');
+    const nested = expandIncludes(fs.readFileSync(chain, 'utf8'), chain, { embeds: true }).content;
+    assert.ok(nested.includes('# C2') && nested.includes('# C3') && nested.includes('# C4'), nested);
+    const deeper = vaultWrite('notes/Chain0.md', '# C0\n\n![[Chain1]]\n');
+    const tooDeep = expandIncludes(fs.readFileSync(deeper, 'utf8'), deeper, { embeds: true }).content;
+    assert.ok(tooDeep.includes('# C3') && tooDeep.includes('![[Chain4]]') && !tooDeep.includes('Too deep.'), tooDeep);
+    // Embeds are off unless asked for, and imports can be off on their own.
+    assert.strictEqual(expandIncludes(source, vaultMain).content, source);
+    assert.strictEqual(expandIncludes('@import "x.md"\n![[Sibling]]', vaultMain, { imports: false }).content, '@import "x.md"\n![[Sibling]]');
+    assert.strictEqual(
+      expandIncludes('![[Missing]]\n![[Sibling#No such part]]', vaultMain, { embeds: true }).content,
+      '![[Missing]]\n![[Sibling#No such part]]'
+    );
+  });
+
+  await asyncTest('core.convertMarkdownToPdf: Obsidian notes and pictures are found in the vault', async () => {
+    const out = path.join(vaultDir, 'main.html');
+    const result = await convertMarkdownToPdf(vaultMain, out, { format: 'html' });
+    const html = body(fs.readFileSync(out, 'utf8'));
+    // A note in this output leads to its heading; one beside it to its file; a missing one is muted text.
+    assert.ok(html.includes('<a class="wikilink" href="#embedded-title">Embedded</a>'), html);
+    assert.ok(html.includes('<a class="wikilink" href="#part-two">part two</a>'));
+    // Only a section of Sibling is here, without its first heading: the link goes to its file.
+    assert.ok(html.includes('<a class="wikilink" href="Sibling.md">Sibling</a>'));
+    assert.ok(html.includes('<span class="wikilink wikilink-unresolved">Missing note</span>'));
+    assert.ok(html.includes('<a class="wikilink" href="#main">Main</a>'));
+    assert.ok(html.includes('<mark>text</mark>'));
+    // Pictures: beside the note, anywhere in the vault by name, or muted text when there is none.
+    assert.ok(html.includes('<img class="obsidian-embed" src="photo%20one.png" alt="photo one.png" width="120">'));
+    assert.ok(html.includes('<img class="obsidian-embed" src="../attachments/logo.png" alt="logo.png">'));
+    assert.ok(html.includes('<span class="wikilink wikilink-unresolved">gone.png</span>'));
+    assert.ok(html.includes('<pre><code>![[Embedded]]\n</code></pre>'));
+    // Watch mode follows the embedded notes.
+    assert.deepStrictEqual(result.includedFiles.map(file => path.basename(file)).sort(), ['Embedded.md', 'Sibling.md']);
+
+    // A note beside it that is not in this output: a link to its file.
+    const lone = vaultWrite('notes/Lone.md', '# Lone\n\nGo to [[Chain4]] or [[Chain4#C4|its top]].\n');
+    await convertMarkdownToPdf(lone, out, { format: 'html' });
+    const loneHtml = fs.readFileSync(out, 'utf8');
+    assert.ok(loneHtml.includes('<a class="wikilink" href="Chain4.md">Chain4</a>'), loneHtml);
+    assert.ok(loneHtml.includes('<a class="wikilink" href="Chain4.md#c4">its top</a>'));
+
+    const AdmZip = require('adm-zip');
+    const docx = new AdmZip((await convertMarkdownToPdf(vaultMain, path.join(vaultDir, 'main.docx'), { format: 'docx' })).outputPath);
+    const xml = docx.readAsText('word/document.xml');
+    assert.strictEqual((xml.match(/<w:drawing>/g) || []).length, 2, 'both pictures found are embedded');
+    assert.ok(xml.includes('Embedded Title') && xml.includes('w:highlight'));
+
+    const off = await convertMarkdownToPdf(vaultMain, out, { format: 'html', obsidian: false });
+    assert.deepStrictEqual(off.includedFiles, []);
+    assert.ok(fs.readFileSync(out, 'utf8').includes('<p>![[Embedded]]</p>'));
+  });
+
+  test('cli: --no-obsidian and "obsidian": false in .mdpdfrc read Obsidian syntax as plain Markdown', () => {
+    const { spawnSync } = require('child_process');
+    const cliPath = path.join(__dirname, '..', 'bin', 'cli.js');
+    const cli = (...args) => spawnSync(process.execPath, [cliPath, ...args], { cwd: path.join(vaultDir, 'notes'), encoding: 'utf8' });
+    const read = () => fs.readFileSync(path.join(vaultDir, 'notes', 'Main.html'), 'utf8');
+    assert.strictEqual(cli('Main.md', '-f', 'html', '--no-config').status, 0);
+    assert.ok(read().includes('class="wikilink"'));
+    assert.strictEqual(cli('Main.md', '-f', 'html', '--no-config', '--no-obsidian').status, 0);
+    assert.ok(!read().includes('class="wikilink"') && read().includes('[[Sibling]]'));
+    fs.writeFileSync(path.join(vaultDir, 'notes', '.mdpdfrc'), JSON.stringify({ format: 'html', obsidian: false }));
+    assert.strictEqual(cli('Main.md').status, 0);
+    assert.ok(!read().includes('class="wikilink"'));
+    assert.ok(cli('--help').stdout.includes('--no-obsidian'));
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  test('extension: ships the same Obsidian code as the CLI; the preview and popup use it', () => {
+    const root = path.join(__dirname, '..');
+    assert.strictEqual(
+      fs.readFileSync(path.join(root, 'extension/lib/obsidian.js'), 'utf8'),
+      fs.readFileSync(path.join(root, 'src/core/obsidian.js'), 'utf8')
+    );
+    const page = fs.readFileSync(path.join(root, 'extension/preview/preview.html'), 'utf8');
+    assert.ok(page.includes('<script src="../lib/obsidian.js"></script>'));
+    const preview = fs.readFileSync(path.join(root, 'extension/preview/preview.js'), 'utf8');
+    assert.ok(preview.includes('MdPdfObsidian.markedExtension(') && preview.includes('MdPdfObsidian.applyCallouts('));
+    assert.ok(preview.includes('obsidian: options.obsidian !== false'), 'the Word export follows the setting');
+    assert.ok(fs.readFileSync(path.join(root, 'extension/popup/popup.html'), 'utf8').includes('id="chk-obsidian" checked'));
+    assert.ok(fs.readFileSync(path.join(root, 'extension/popup/popup.js'), 'utf8').includes('obsidian: chkObsidian'));
+    // Loaded as a classic script it defines MdPdfObsidian.
+    const vm = require('vm');
+    const context = vm.createContext({});
+    vm.runInContext(fs.readFileSync(path.join(root, 'extension/lib/obsidian.js'), 'utf8'), context);
+    assert.strictEqual(typeof context.MdPdfObsidian.markedExtension, 'function');
+    assert.strictEqual(obsidianSyntax.slugify('Två Ways: été!'), 'två-ways-été');
+  });
+
+  await asyncTest('extension: the Word export in the page reads Obsidian syntax as the CLI does', async () => {
+    const AdmZip = require('adm-zip');
+    const context = loadExtensionDocx();
+    const source = '# Start\n\n## Next\n\n==hot== [[#Next|go]] [[Other]]\n\n> [!tip] Title\n> body\n\n`==code==`\n';
+    for (const options of [{}, { obsidian: false }]) {
+      const fromPage = new AdmZip(Buffer.from(await context.MdPdfDocx.exportDocx(source, options)));
+      const fromCli = new AdmZip(markdownToDocx(source, options));
+      assert.strictEqual(fromPage.readAsText('word/document.xml'), fromCli.readAsText('word/document.xml'));
+    }
+    const xml = new AdmZip(Buffer.from(await context.MdPdfDocx.exportDocx(source, {}))).readAsText('word/document.xml');
+    assert.ok(xml.includes('w:highlight') && xml.includes('w:anchor="h_next"') && xml.includes('💡 Title'));
+  });
+
   console.log(`\n\x1b[33mSummary:\x1b[0m ${passed}/${total} tests passed.`);
   if (passed !== total) {
     process.exit(1);

@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const chkCover = document.getElementById('chk-cover');
   const chkMermaid = document.getElementById('chk-mermaid');
   const chkKatex = document.getElementById('chk-katex');
+  const chkObsidian = document.getElementById('chk-obsidian');
   const customCssInput = document.getElementById('custom-css-input');
   const pageNumbersSelect = document.getElementById('page-numbers');
   const headerInput = document.getElementById('header-input');
@@ -30,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let saveDraftTimeout = null;
 
   // Load saved preferences & draft
-  chrome.storage.sync.get(['theme', 'font', 'pageSize', 'toc', 'cover', 'mermaid', 'katex', 'customCss', 'pageNumbers', 'header', 'footer'], (items) => {
+  chrome.storage.sync.get(['theme', 'font', 'pageSize', 'toc', 'cover', 'mermaid', 'katex', 'obsidian', 'customCss', 'pageNumbers', 'header', 'footer'], (items) => {
     if (items.theme) themeSelect.value = items.theme;
     if (items.font && fontSelect) fontSelect.value = items.font;
     if (items.pageSize) pageSizeSelect.value = items.pageSize;
@@ -38,6 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (items.cover !== undefined && chkCover) chkCover.checked = items.cover;
     if (items.mermaid !== undefined) chkMermaid.checked = items.mermaid;
     if (items.katex !== undefined) chkKatex.checked = items.katex;
+    if (items.obsidian !== undefined && chkObsidian) chkObsidian.checked = items.obsidian;
     if (items.customCss) customCssInput.value = items.customCss;
     if (items.pageNumbers && pageNumbersSelect) pageNumbersSelect.value = items.pageNumbers;
     if (items.header && headerInput) headerInput.value = items.header;
@@ -237,6 +239,7 @@ document.addEventListener('DOMContentLoaded', () => {
       cover: chkCover ? chkCover.checked : false,
       mermaid: chkMermaid.checked,
       katex: chkKatex.checked,
+      obsidian: chkObsidian ? chkObsidian.checked : true,
       customCss: customCssInput.value,
       pageNumbers: pageNumbersSelect ? pageNumbersSelect.value : '',
       header: headerInput ? headerInput.value : '',

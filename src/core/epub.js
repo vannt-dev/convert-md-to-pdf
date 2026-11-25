@@ -116,6 +116,7 @@ class EpubWriter {
         if (run.sup) html = `<sup>${html}</sup>`;
         else if (run.sub) html = `<sub>${html}</sub>`;
         if (run.strike) html = `<del>${html}</del>`;
+        if (run.mark) html = `<mark>${html}</mark>`;
         if (run.italic) html = `<em>${html}</em>`;
         if (run.bold) html = `<strong>${html}</strong>`;
         const href = run.href ? this.href(run.href) : null;
