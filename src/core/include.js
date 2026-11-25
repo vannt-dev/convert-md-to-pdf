@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { parseFrontMatter } = require('./frontmatter');
 const { isImage, parseTarget, slugify } = require('./obsidian');
-const { findNote, findVaultRoot } = require('./vault');
+const { findNote, findVaultRoot, samePathKey } = require('./vault');
 
 /**
  * File includes: a line that holds only `@import "path"` is replaced by the
@@ -85,7 +85,8 @@ function embeddedNote(line, filePath, chain, settings, embedDepth) {
   const target = parseTarget(match[1]);
   if (!target.name || target.block || isImage(target.name) || embedDepth >= MAX_EMBED_DEPTH) return null;
   const file = findNote(target.name, filePath, settings.vaultRoot);
-  if (!file || chain.includes(file)) return null;
+  // Compared as the file system does, so `![[main]]` in a note embedded by Main.md is a loop too.
+  if (!file || chain.some(link => samePathKey(link) === samePathKey(file))) return null;
   return { file, heading: target.heading };
 }
 

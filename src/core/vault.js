@@ -18,6 +18,11 @@ const NOTE_EXTENSIONS = ['.md', '.markdown'];
 const MAX_VAULT_FILES = 20000;
 const vaultFiles = new Map();
 
+/** Lists the vaults again on the next lookup: each conversion (and each watch rebuild) calls it. */
+function forgetVaultFiles() {
+  vaultFiles.clear();
+}
+
 function isFile(file) {
   try {
     return fs.statSync(file).isFile();
@@ -183,5 +188,7 @@ function createVaultResolver(filePath, files = []) {
 module.exports = {
   createVaultResolver,
   findNote,
-  findVaultRoot
+  findVaultRoot,
+  forgetVaultFiles,
+  samePathKey
 };

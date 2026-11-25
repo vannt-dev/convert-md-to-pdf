@@ -10,7 +10,7 @@ const { markdownToDocx } = require('./docx');
 const { markdownToEpub } = require('./epub');
 const { buildDocument, collectHeadings, collectMedia, mediaLookup } = require('./docmodel');
 const { BrokenReferencesError, findBrokenReferences, htmlIds } = require('./references');
-const { createVaultResolver } = require('./vault');
+const { createVaultResolver, forgetVaultFiles } = require('./vault');
 
 const FORMATS = ['pdf', 'html', 'docx', 'epub'];
 
@@ -135,6 +135,8 @@ async function convertMarkdownToPdf(inputPath, outputPath, options = {}) {
   let origins;
   // Obsidian's `![[Note]]` lines are filled in with the imports.
   const obsidian = obsidianEnabled(markdownContent, options);
+  // A picture or note added since the last conversion (in watch mode) is found.
+  if (obsidian) forgetVaultFiles();
   if (options.include !== false || obsidian) {
     ({ content: markdownContent, files: includedFiles, origins } = expandIncludes(markdownContent, absInputPath, {
       imports: options.include !== false,

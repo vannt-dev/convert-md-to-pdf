@@ -1679,7 +1679,9 @@ Text`, { toc: true });
   test('obsidian: plain Markdown is unchanged: links, task lists, footnotes, alerts, reference links', () => {
     const plain = [
       fs.readFileSync(path.join(__dirname, '..', 'examples', 'sample.md'), 'utf8'),
-      '# Doc\n\n[link](https://example.com) [[1]](https://x.y/1) [[a]][ref] [x]\n\n[ref]: https://ref.example\n',
+      '# Doc\n\n[link](https://example.com) [[1]](https://x.y/1) [[a]][ref] [x] ![[alt]](pic.png)\n\n[ref]: https://ref.example\n',
+      'Cited [[7]] and [[Two  words]].\n\n[7]: https://cite.example/7\n[two words]: https://cite.example/2\n',
+      '> [!NOTE] Same line\n> next\n\n> [!TIP] Tip text\n',
       '- [ ] open\n- [x] done\n\nNote[^1].\n\n[^1]: The note.\n\n> [!NOTE]\n> GitHub alert\n\n> [!WARNING]\n> Careful\n',
       'Math $a == b$ and $$x == y$$ stay math; prices $5 and $10.\n\n```\n[[code]] ==code== ![[code.png]]\n```\n'
     ].join('\n\n');
@@ -1692,6 +1694,8 @@ Text`, { toc: true });
     const html = body(parseMarkdownToHtml(plain));
     assert.ok(html.includes('<a href="https://x.y/1">[1]</a>'), html);
     assert.ok(html.includes('<a href="https://ref.example">[a]</a>'));
+    assert.ok(html.includes('<img src="pic.png" alt="[alt]">'), html);
+    assert.ok(html.includes('<a href="https://cite.example/7">7</a>') && html.includes('https://cite.example/2'));
     assert.ok(html.includes('<input checked="" disabled="" type="checkbox"> done'));
   });
 

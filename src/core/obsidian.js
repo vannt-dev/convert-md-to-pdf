@@ -16,13 +16,13 @@
   const IMAGE = /\.(png|jpe?g|gif|svg|webp|bmp|avif)$/i;
   const SIZE = /^\s*(\d+)(?:\s*x\s*(\d+))?\s*$/;
   const FENCE = /^ {0,3}(`{3,}|~{3,})/;
-  const EMBED = /^!\[\[([^[\]\n]+?)\]\]/;
-  // Not `[[1]](url)` or `[[a]][ref]`: those are Markdown links whose text has brackets.
+  // Not `[[1]](url)`, `[[a]][ref]` or `![[alt]](pic.png)`: Markdown links whose text has brackets.
+  const EMBED = /^!\[\[([^[\]\n]+?)\]\](?![([])/;
   const WIKILINK = /^\[\[([^[\]\n]+?)\]\](?![([])/;
   // A non-space, non-`=` character just inside both ends, so `a == b` and `====` stay text.
   const MARK = /^==(?=[^\s=])([^\n]*?[^\s=])==(?!=)/;
   const CALLOUT = /^( {0,3}>[ \t]*)\[!([A-Za-z][\w-]*)\]([+-]?)[ \t]*(.*)$/;
-  // GitHub's alerts, written in capitals with no title: preprocess.js draws them as before.
+  // GitHub's alerts, written in capitals: preprocess.js draws them as before.
   const GITHUB_ALERT = /^(NOTE|TIP|WARNING|IMPORTANT|CAUTION)$/;
   const CALLOUT_ICONS = {
     note: 'ℹ️', info: 'ℹ️', todo: '☑️', abstract: '📋', summary: '📋', tldr: '📋',
@@ -31,6 +31,12 @@
     failure: '❌', fail: '❌', missing: '❌', danger: '⚡', error: '⚡', bug: '🐞',
     example: '🧪', quote: '💬', cite: '💬'
   };
+
+  /** Whether the document defines `[label]: url`, which makes `[[label]]` a Markdown link. */
+  function isDefined(lexer, label) {
+    const links = lexer && lexer.tokens && lexer.tokens.links;
+    return Boolean(links) && Object.prototype.hasOwnProperty.call(links, label.trim().replace(/\s+/g, ' ').toLowerCase());
+  }
 
   function escapeHtml(text) {
     return String(text == null ? '' : text)
@@ -217,7 +223,7 @@
       },
       tokenizer(src) {
         const match = EMBED.exec(src);
-        if (!match) return undefined;
+        if (!match || isDefined(this.lexer, match[1])) return undefined;
         const target = parseTarget(match[1]);
         if (!target.name && !target.heading) return undefined;
         if (!IMAGE.test(target.name)) {
@@ -253,7 +259,7 @@
       },
       tokenizer(src) {
         const match = WIKILINK.exec(src);
-        if (!match) return undefined;
+        if (!match || isDefined(this.lexer, match[1])) return undefined;
         const target = parseTarget(match[1]);
         if (!target.name && !target.heading) return undefined;
         return wikilinkToken(match[0], target);
@@ -294,9 +300,9 @@
 
   /**
    * Obsidian callouts: `> [!type] Title` (any case, `+`/`-` for folding are read and ignored)
-   * starts a quote with the type's icon and the title in bold. GitHub's alerts (`> [!NOTE]` in
-   * capitals, no title) are left to preprocess.js, so they look as they did. Code blocks are
-   * left alone.
+   * starts a quote with the type's icon and the title in bold. GitHub's alerts (`> [!NOTE]`,
+   * `> [!TIP]` ... in capitals) are left to preprocess.js, so they look as they did. Code blocks
+   * are left alone.
    * @param {string} markdown
    * @returns {string}
    */
@@ -318,7 +324,7 @@
         const match = CALLOUT.exec(line.replace(/\r$/, ''));
         if (!match) return line;
         const [, quote, type, , title] = match;
-        if (!title.trim() && GITHUB_ALERT.test(type)) return line;
+        if (GITHUB_ALERT.test(type)) return line;
         const key = type.toLowerCase();
         const icon = CALLOUT_ICONS[key] || 'ℹ️';
         const text = title.trim() || key.charAt(0).toUpperCase() + key.slice(1);
