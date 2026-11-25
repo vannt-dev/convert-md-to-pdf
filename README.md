@@ -50,6 +50,12 @@ anything else is not published by vannt-dev.
 - 📎 **File Includes (CLI)**: A line that holds only `@import "chapters/intro.md"` is replaced by that file, relative to the file the line is in. A Markdown file is inserted as Markdown (without its front matter) and may import further files; any other file — `@import "src/app.js"` — is inserted as a code block labelled with its extension. Lines inside a code block are left alone, a missing file or files that import each other stop the conversion with the file and line, and watch mode follows the imported files. `--no-include` turns it off.
 - 🔒 **Strict Mode (CLI)**: `--strict` refuses a document with broken references instead of writing a file with holes in it: a picture that cannot be loaded (a missing or unreadable file, by relative path, absolute path or `file:///` address; for PDF also a web picture that does not answer), a link to a local file that does not exist, a link to an `#anchor` no heading has, and a footnote reference without a note. Every problem is listed with its file and line, also in imported files; that file is not written, the other inputs are still checked and converted, and the run ends with exit code 1. Works for PDF, HTML, Word and EPUB; `"strict": true` in `.mdpdfrc` turns it on for a repo. Code blocks and formulas are not searched. The anchors are those of the output: in PDF and HTML headings get them from `--toc`.
 - 💡 **GitHub Callout Box Alerts**: Support for `> [!NOTE]`, `> [!TIP]`, `> [!WARNING]`, `> [!IMPORTANT]`, and `> [!CAUTION]`.
+- 🟣 **Obsidian Markdown**: notes written in Obsidian convert as they look there. On by default; `--no-obsidian`, `"obsidian": false` in `.mdpdfrc`, `obsidian: false` in the front matter or the **Obsidian** box in the extension popup turn it off. Code spans and code blocks keep the syntax as written.
+  - `==highlight==` is highlighted (yellow in PDF, HTML and Word; `<mark>` in EPUB).
+  - Wikilinks `[[Note]]`, `[[Note#Heading]]`, `[[Note|alias]]` and `[[#Heading]]` become links. The CLI looks for `Note.md` beside the file, then in the vault (the folder above that holds `.obsidian`), anywhere by name as Obsidian does. A note that is part of the same output (through `![[Note]]` or `@import`) is linked to its heading; another note is linked to its `.md` file; a note that cannot be found shows its name (or alias) in a muted style. Linking to a heading gives the headings their anchors in PDF and HTML, as `--toc` does. In Word and EPUB a link to another file keeps its text only.
+  - Embeds: `![[picture.png]]`, `![[picture.png|300]]` (width) and `![[picture.png|caption|300x200]]` show the picture, found like a note (beside the file, then in the vault, e.g. an attachments folder). A line that holds only `![[Other note]]` or `![[Other note#Heading]]` is replaced by that note or that section of it (CLI), up to three levels deep; a note that would embed itself again, one nested deeper or one that cannot be found stays a link. Watch mode follows the embedded notes.
+  - Callouts `> [!note] Title`, `> [!warning]- Folded` and the other Obsidian types (any case) get their icon and title. GitHub's `> [!NOTE]` alerts look as before.
+  - The extension has no files to look in: `[[#Heading]]` links within the document, a picture embed shows when the page can load it, and other wikilinks show their name.
 - 💻 **ASCII UI Mockups**: Styled dark-theme boxes for terminal output & ASCII wireframe mockups.
 
 ---
@@ -158,6 +164,7 @@ toc: true
 | `--no-katex` | | Disable KaTeX math formula rendering | `false` |
 | `--no-highlight` | | Disable syntax highlighting of code blocks | `false` |
 | `--no-include` | | Leave `@import "file"` lines as they are instead of inserting the file | `false` |
+| `--no-obsidian` | | Read Obsidian syntax (`==highlight==`, `[[wikilinks]]`, `![[embeds]]`, callouts) as plain Markdown | `false` |
 | `--no-outline` | | Leave out the PDF bookmarks (outline) made from the headings | `false` |
 | `--strict` | | Fail, writing nothing, when a picture, a linked local file, an `#anchor` or a footnote is missing | `false` |
 | `-b, --browser <path>` | | Chrome, Edge or Chromium executable to print the PDF with | Found automatically |
@@ -180,7 +187,7 @@ A repo can keep its build settings in a `.mdpdfrc` (or `.mdpdfrc.json`) file, so
 }
 ```
 
-Keys: `output`, `format`, `theme`, `font`, `cover`, `pageSize`, `landscape`, `margin`, `toc`, `pageNumbers`, `header`, `footer`, `watermark`, `css`, `keepHtml`, `mermaid`, `katex`, `highlight`, `include`, `outline`, `strict`, `browser`. Paths (`output`, `css`, `browser`) are relative to the config file's folder.
+Keys: `output`, `format`, `theme`, `font`, `cover`, `pageSize`, `landscape`, `margin`, `toc`, `pageNumbers`, `header`, `footer`, `watermark`, `css`, `keepHtml`, `mermaid`, `katex`, `highlight`, `include`, `obsidian`, `outline`, `strict`, `browser`. Paths (`output`, `css`, `browser`) are relative to the config file's folder.
 
 - **Where it is found:** in the current folder, else in the nearest parent folder, stopping at the repository root (the folder that holds `.git`). In one folder `.mdpdfrc` is used before `.mdpdfrc.json`. `--config <path>` reads another file instead; `--no-config` reads none.
 - **Which setting wins:** command-line flags, then the file's front matter, then `.mdpdfrc`, then the built-in defaults. So `.mdpdfrc` sets the repo's defaults, one document can change them in its front matter, and a flag changes them for one run.
@@ -205,6 +212,8 @@ font: Inter
 pageSize: A4
 landscape: false
 highlight: true
+# Obsidian syntax (==highlight==, [[wikilinks]], ![[embeds]], callouts); default true
+obsidian: true
 # document language (default en): cover labels and the page's lang
 lang: en
 # running header and footer; header: true also means the title

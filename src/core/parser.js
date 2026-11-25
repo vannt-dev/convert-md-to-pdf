@@ -1,5 +1,6 @@
 /*! SPDX-License-Identifier: MIT | Copyright (c) 2026 Van Nguyen | github.com/vannt-dev/convert-md-to-pdf */
-const { marked } = require('marked');
+const { Marked, Renderer } = require('marked');
+const obsidianSyntax = require('./obsidian');
 const hljs = require('highlight.js/lib/common');
 const { 
   parseFrontMatter, 
@@ -22,7 +23,7 @@ const { protectMath } = require('./math');
  * @returns {marked.Renderer}
  */
 function buildMarkedRenderer(headingsMap, highlight = true) {
-  const renderer = new marked.Renderer();
+  const renderer = new Renderer();
   const originalCodeRenderer = renderer.code.bind(renderer);
 
   renderer.code = function(token) {
@@ -105,6 +106,7 @@ function parseMarkdownToHtml(rawMarkdownContent, options = {}) {
     mermaid: options.mermaid !== undefined ? options.mermaid : (frontMatter.mermaid !== false),
     katex: options.katex !== undefined ? options.katex : (frontMatter.katex !== false),
     highlight: options.highlight !== undefined ? options.highlight : (frontMatter.highlight !== false),
+    obsidian: options.obsidian !== undefined ? options.obsidian !== false : (frontMatter.obsidian !== false),
     customCss: options.customCss || '',
     cssFile: options.cssFile || frontMatter.cssFile || frontMatter.css
   };
@@ -113,7 +115,10 @@ function parseMarkdownToHtml(rawMarkdownContent, options = {}) {
   // The formulas are taken out first, so that neither the preprocessor nor Markdown changes the
   // TeX; they come back once the HTML is made. Without KaTeX nothing would draw them.
   const math = mergedOptions.katex ? protectMath(markdownContent) : null;
-  const processedMd = preprocessMarkdown(applyFootnotes(math ? math.text : markdownContent), { mathProtected: !!math });
+  let mathless = math ? math.text : markdownContent;
+  // Obsidian callouts become quotes with a bold title before GitHub's alerts are read.
+  if (mergedOptions.obsidian) mathless = obsidianSyntax.applyCallouts(mathless);
+  const processedMd = preprocessMarkdown(applyFootnotes(mathless), { mathProtected: !!math });
 
   // 4. Generate TOC & Cover Page
   let tocHtml = '';
@@ -155,11 +160,19 @@ function parseMarkdownToHtml(rawMarkdownContent, options = {}) {
   }
 
   // 6. Parse Markdown using custom renderer
-  marked.setOptions({ gfm: true, breaks: true });
   const renderer = buildMarkedRenderer(headingsMap, mergedOptions.highlight);
-  marked.use({ renderer });
+  const markdown = new Marked({ gfm: true, breaks: true }, { renderer });
+  if (mergedOptions.obsidian) {
+    const vault = options.vault || {};
+    markdown.use(obsidianSyntax.markedExtension({
+      resolveNote: vault.resolveNote,
+      resolveImage: vault.resolveImage,
+      // A wikilink to a heading gives the headings the anchors the table of contents would.
+      headingId: obsidianSyntax.headingIdsOnDemand(headingsMap, () => generateToc(processedMd).headingsMap)
+    }));
+  }
 
-  let bodyHtml = marked.parse(processedMd);
+  let bodyHtml = markdown.parse(processedMd);
   bodyHtml = sanitizeHtml(bodyHtml);
 
   // 7. Inject TOC, Cover Page & Section Groups

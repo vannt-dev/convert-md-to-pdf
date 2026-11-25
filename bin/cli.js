@@ -45,6 +45,7 @@ program
   .option('--no-katex', 'Disable KaTeX math formula rendering')
   .option('--no-highlight', 'Disable syntax highlighting of code blocks')
   .option('--no-include', 'Leave @import "file" lines as they are instead of inserting the file')
+  .option('--no-obsidian', 'Read Obsidian syntax (==highlight==, [[wikilinks]], ![[embeds]], callouts) as plain Markdown')
   .option('--no-outline', 'Leave out the PDF bookmarks (outline) made from the headings')
   .option('--strict', 'Fail, writing nothing, when a picture, a linked local file, an #anchor or a footnote is missing', false)
   .option('-b, --browser <path>', 'Custom Chrome/Edge executable path')
@@ -172,6 +173,7 @@ program
               katex: fileOptions.katex,
               highlight: fileOptions.highlight,
               include: fileOptions.include,
+              obsidian: fileOptions.obsidian,
               outline: fileOptions.outline,
               strict: fileOptions.strict,
               executablePath: fileOptions.browser

@@ -1,10 +1,11 @@
 /*! SPDX-License-Identifier: MIT | Copyright (c) 2026 Van Nguyen | github.com/vannt-dev/convert-md-to-pdf */
-const { marked } = require('marked');
+const { Marked } = require('marked');
 const { parseFrontMatter } = require('./frontmatter');
 const { applyFootnotes } = require('./footnotes');
 const { preprocessMarkdown } = require('./preprocess');
 const { protectMath } = require('./math');
 const { parseMathml } = require('./omml');
+const obsidianSyntax = require('./obsidian');
 
 /**
  * A format-neutral model of a Markdown document, for the exporters that do
@@ -23,7 +24,7 @@ const { parseMathml } = require('./omml');
  *
  * Runs are flat: nested emphasis becomes flags on each piece of text, so a
  * writer never has to balance tags.
- *   { text, bold, italic, strike, code, sup, sub, href }
+ *   { text, bold, italic, strike, code, sup, sub, mark, href }   mark: highlighted (`==text==`)
  *   { image: { src, alt }, href } | { lineBreak: true }
  *   { math: { tex, display, raw }, ... }  a formula in the text; `raw` is how it was typed
  */
@@ -73,7 +74,7 @@ function createSlugger() {
 const HTML_TAG = /<(\/?)([a-zA-Z][\w-]*)((?:\s+[^<>]*?)?)\s*(\/?)>/g;
 const FLAG_TAGS = {
   b: 'bold', strong: 'bold', i: 'italic', em: 'italic', s: 'strike', del: 'strike',
-  strike: 'strike', code: 'code', kbd: 'code', sup: 'sup', sub: 'sub'
+  strike: 'strike', code: 'code', kbd: 'code', sup: 'sup', sub: 'sub', mark: 'mark'
 };
 
 function attribute(source, name) {
@@ -89,7 +90,7 @@ function attribute(source, name) {
  */
 function createRunCollector(formulas) {
   const runs = [];
-  const flags = { bold: 0, italic: 0, strike: 0, code: 0, sup: 0, sub: 0 };
+  const flags = { bold: 0, italic: 0, strike: 0, code: 0, sup: 0, sub: 0, mark: 0 };
   // Raw <a> elements still open: a link target, or null for one whose text is skipped.
   const anchors = [];
   let skipping = 0;
@@ -175,6 +176,12 @@ function createRunCollector(formulas) {
         case 'strong': walk(token.tokens, { ...style, bold: true }); break;
         case 'em': walk(token.tokens, { ...style, italic: true }); break;
         case 'del': walk(token.tokens, { ...style, strike: true }); break;
+        case 'mark': walk(token.tokens, { ...style, mark: true }); break;
+        // Obsidian (obsidian.js): a wikilink is a link, or its text when it leads nowhere.
+        case 'wikilink': pushText(token.text, token.href ? { ...style, href: token.href } : style); break;
+        case 'obsidianImage':
+          if (skipping === 0) runs.push({ image: { src: token.src, alt: token.alt }, ...styleNow(style) });
+          break;
         case 'codespan': pushText(decodeEntities(token.text), { ...style, code: true }); break;
         case 'br': if (skipping === 0) runs.push({ lineBreak: true }); break;
         case 'link': walk(token.tokens, { ...style, href: written(token.href) }); break;
@@ -195,7 +202,7 @@ function createRunCollector(formulas) {
 }
 
 function sameStyle(a, b) {
-  for (const key of ['bold', 'italic', 'strike', 'code', 'sup', 'sub', 'href']) {
+  for (const key of ['bold', 'italic', 'strike', 'code', 'sup', 'sub', 'mark', 'href']) {
     if ((a[key] || false) !== (b[key] || false)) return false;
   }
   return true;
@@ -349,13 +356,26 @@ function buildDocument(rawMarkdown = '', options = {}) {
     highlight: options.highlight !== undefined ? options.highlight : frontMatter.highlight !== false,
     // As in the PDF: `--no-katex` and `--no-mermaid`, or `katex: false` and `mermaid: false`.
     math: options.katex !== undefined ? options.katex !== false : frontMatter.katex !== false,
-    diagrams: options.mermaid !== undefined ? options.mermaid !== false : frontMatter.mermaid !== false
+    diagrams: options.mermaid !== undefined ? options.mermaid !== false : frontMatter.mermaid !== false,
+    // Obsidian syntax (obsidian.js): on unless `obsidian: false`
+    obsidian: options.obsidian !== undefined ? options.obsidian !== false : frontMatter.obsidian !== false
   };
 
   // The formulas are taken out first, as for the PDF, so that Markdown cannot change them.
   const math = settings.math ? protectMath(content) : null;
-  const processed = preprocessMarkdown(applyFootnotes(math ? math.text : content), { mathProtected: Boolean(math) });
-  const tokens = marked.lexer(processed, { gfm: true, breaks: true });
+  let mathless = math ? math.text : content;
+  if (settings.obsidian) mathless = obsidianSyntax.applyCallouts(mathless);
+  const processed = preprocessMarkdown(applyFootnotes(mathless), { mathProtected: Boolean(math) });
+  const markdown = new Marked({ gfm: true, breaks: true });
+  if (settings.obsidian) {
+    const vault = options.vault || {};
+    markdown.use(obsidianSyntax.markedExtension({
+      resolveNote: vault.resolveNote,
+      resolveImage: vault.resolveImage,
+      headingId: obsidianSyntax.headingLookup(obsidianSyntax.scanHeadings(processed))
+    }));
+  }
+  const tokens = markdown.lexer(processed);
   const context = { slug: createSlugger(), formulas: math ? math.formulas : [], diagrams: settings.diagrams };
   return { meta, blocks: toBlocks(tokens, context), settings };
 }

@@ -10,6 +10,7 @@ const { markdownToDocx } = require('./docx');
 const { markdownToEpub } = require('./epub');
 const { buildDocument, collectHeadings, collectMedia, mediaLookup } = require('./docmodel');
 const { BrokenReferencesError, findBrokenReferences, htmlIds } = require('./references');
+const { createVaultResolver } = require('./vault');
 
 const FORMATS = ['pdf', 'html', 'docx', 'epub'];
 
@@ -81,6 +82,18 @@ function pdfOutline(markdown, options = {}) {
 }
 
 /**
+ * Whether Obsidian syntax (`==highlight==`, `[[wikilinks]]`, `![[embeds]]`, callouts) is read:
+ * on unless `obsidian: false` is passed or set in the front matter (an option wins).
+ * @param {string} markdown
+ * @param {Object} options
+ * @returns {boolean}
+ */
+function obsidianEnabled(markdown, options = {}) {
+  if (options.obsidian !== undefined) return options.obsidian !== false;
+  return parseFrontMatter(markdown).data.obsidian !== false;
+}
+
+/**
  * Main function to convert a Markdown file: to PDF by default, or to the
  * format named in `options.format` (`html`, `docx`, `epub`)
  * @param {string} inputPath Path to source .md file
@@ -88,7 +101,8 @@ function pdfOutline(markdown, options = {}) {
  * @param {Object} [options] Conversion options. `options.markdown` gives the Markdown itself
  *   (e.g. read from stdin); `inputPath` then need not exist and only places relative paths.
  *   `options.strict` refuses a document with broken references: nothing is written and the
- *   promise is rejected with a BrokenReferencesError that lists them in `problems`
+ *   promise is rejected with a BrokenReferencesError that lists them in `problems`.
+ *   `options.obsidian: false` reads Obsidian syntax as plain Markdown
  * @returns {Promise<{ outputPath: string, htmlPath: string, pdfPath: string, includedFiles: string[], warnings: string[] }>}
  *   `outputPath` is the file that was asked for, whatever its format; `warnings` names what a
  *   Word or EPUB export could not draw (a diagram or formula kept as its source)
@@ -119,8 +133,17 @@ async function convertMarkdownToPdf(inputPath, outputPath, options = {}) {
   let markdownContent = fromText ? options.markdown : fs.readFileSync(absInputPath, 'utf8');
   let includedFiles = [];
   let origins;
-  if (options.include !== false) {
-    ({ content: markdownContent, files: includedFiles, origins } = expandIncludes(markdownContent, absInputPath));
+  // Obsidian's `![[Note]]` lines are filled in with the imports.
+  const obsidian = obsidianEnabled(markdownContent, options);
+  if (options.include !== false || obsidian) {
+    ({ content: markdownContent, files: includedFiles, origins } = expandIncludes(markdownContent, absInputPath, {
+      imports: options.include !== false,
+      embeds: obsidian
+    }));
+  }
+  if (obsidian) {
+    // Wikilinks and picture embeds are found beside the files of this output.
+    options = { ...options, obsidian: true, vault: createVaultResolver(absInputPath, includedFiles) };
   }
   // With `strict`, called with the ids of the output before anything is written.
   const refuseBrokenReferences = async (ids, extra = {}) => {

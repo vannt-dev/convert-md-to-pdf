@@ -72,7 +72,8 @@ document.addEventListener('DOMContentLoaded', () => {
             toc: !!options.toc,
             cover: !!options.cover,
             mermaid: options.mermaid !== false && typeof mermaid !== 'undefined',
-            katex: options.katex !== false && typeof katex !== 'undefined'
+            katex: options.katex !== false && typeof katex !== 'undefined',
+            obsidian: options.obsidian !== false
           };
           const jobs = MdPdfDocx.mediaJobs(markdownText, exportOptions);
           const drawn = await MdPdfMedia.renderMedia(jobs, {
@@ -173,7 +174,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // The formulas are taken out first, so that neither the preprocessor nor Markdown changes
     // the TeX; they come back once the HTML is made (as in the CLI's src/core/parser.js).
     const math = options.katex !== false && typeof katex !== 'undefined' ? MdPdfMath.protectMath(markdownText) : null;
-    const processedMd = preprocessMarkdown(MdPdfFootnotes.applyFootnotes(math ? math.text : markdownText), !!math);
+    // Obsidian syntax (lib/obsidian.js, as in the CLI): on unless turned off in the popup.
+    const obsidian = options.obsidian !== false && typeof MdPdfObsidian !== 'undefined';
+    let mathless = math ? math.text : markdownText;
+    if (obsidian) mathless = MdPdfObsidian.applyCallouts(mathless);
+    const processedMd = preprocessMarkdown(MdPdfFootnotes.applyFootnotes(mathless), !!math);
 
     // Generate TOC if requested
     let tocHtml = '';
@@ -185,7 +190,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Configure marked the way the CLI does (src/core/parser.js); both use the same marked version.
-    marked.setOptions({ gfm: true, breaks: true });
+    // A new instance each time, so the options of an earlier rendering are not kept.
+    const markdown = new marked.Marked({ gfm: true, breaks: true });
     const renderer = new marked.Renderer();
     const originalCodeRenderer = renderer.code.bind(renderer);
 
@@ -216,10 +222,17 @@ document.addEventListener('DOMContentLoaded', () => {
       return `<h${depth} id="${slug}">${this.parser.parseInline(tokens)}</h${depth}>`;
     };
 
-    marked.use({ renderer });
+    markdown.use({ renderer });
+    // Notes and files cannot be looked up from here: `[[#Heading]]` leads to a heading of this
+    // document, a picture embed loads its name as a relative address, other links show their name.
+    if (obsidian) {
+      markdown.use(MdPdfObsidian.markedExtension({
+        headingId: MdPdfObsidian.headingIdsOnDemand(headingsMap, () => generateToc(processedMd).headingsMap)
+      }));
+    }
 
     // Parse HTML
-    let bodyHtml = marked.parse(processedMd);
+    let bodyHtml = markdown.parse(processedMd);
 
     // Insert TOC
     if (tocHtml) {
@@ -579,13 +592,15 @@ document.addEventListener('DOMContentLoaded', () => {
       .hljs-strong { font-weight: 700; }
     `;
 
-    // Keep in sync with the footnote rules in src/core/templates.js.
+    // Keep in sync with the footnote and Obsidian rules in src/core/templates.js.
     const footnoteCss = `
       .footnote-ref { font-size: 0.75em; line-height: 0; }
       .footnote-ref a, .footnote-backref { text-decoration: none; }
       .footnotes { margin-top: 28px; padding-top: 10px; border-top: 1px solid currentColor; font-size: 0.85em; break-inside: avoid-page; }
       .footnotes ol { margin: 0; padding-left: 1.6em; }
       .footnotes li { margin: 3px 0; }
+      mark { background: #fff3a3; color: #1f2328; padding: 0 0.15em; border-radius: 2px; }
+      .wikilink-unresolved { opacity: 0.65; border-bottom: 1px dashed currentColor; }
     `;
 
     // Diagrams are drawn inside <pre class="mermaid">: keep the code-block look off them.
