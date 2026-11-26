@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const chkToc = document.getElementById('chk-toc');
   const chkCover = document.getElementById('chk-cover');
   const chkMermaid = document.getElementById('chk-mermaid');
+  const chkMarkmap = document.getElementById('chk-markmap');
   const chkKatex = document.getElementById('chk-katex');
   const chkObsidian = document.getElementById('chk-obsidian');
   const customCssInput = document.getElementById('custom-css-input');
@@ -31,13 +32,14 @@ document.addEventListener('DOMContentLoaded', () => {
   let saveDraftTimeout = null;
 
   // Load saved preferences & draft
-  chrome.storage.sync.get(['theme', 'font', 'pageSize', 'toc', 'cover', 'mermaid', 'katex', 'obsidian', 'customCss', 'pageNumbers', 'header', 'footer'], (items) => {
+  chrome.storage.sync.get(['theme', 'font', 'pageSize', 'toc', 'cover', 'mermaid', 'markmap', 'katex', 'obsidian', 'customCss', 'pageNumbers', 'header', 'footer'], (items) => {
     if (items.theme) themeSelect.value = items.theme;
     if (items.font && fontSelect) fontSelect.value = items.font;
     if (items.pageSize) pageSizeSelect.value = items.pageSize;
     if (items.toc !== undefined) chkToc.checked = items.toc;
     if (items.cover !== undefined && chkCover) chkCover.checked = items.cover;
     if (items.mermaid !== undefined) chkMermaid.checked = items.mermaid;
+    if (items.markmap !== undefined && chkMarkmap) chkMarkmap.checked = items.markmap;
     if (items.katex !== undefined) chkKatex.checked = items.katex;
     if (items.obsidian !== undefined && chkObsidian) chkObsidian.checked = items.obsidian;
     if (items.customCss) customCssInput.value = items.customCss;
@@ -238,6 +240,7 @@ document.addEventListener('DOMContentLoaded', () => {
       toc: chkToc.checked,
       cover: chkCover ? chkCover.checked : false,
       mermaid: chkMermaid.checked,
+      markmap: chkMarkmap ? chkMarkmap.checked : true,
       katex: chkKatex.checked,
       obsidian: chkObsidian ? chkObsidian.checked : true,
       customCss: customCssInput.value,

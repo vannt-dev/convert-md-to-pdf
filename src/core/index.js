@@ -35,7 +35,7 @@ function temporaryHtmlPath(absInputPath, absOutputPath) {
 }
 
 /**
- * Draws the Mermaid diagrams and formulas of a Word or EPUB export in the headless browser.
+ * Draws the Mermaid diagrams, mind maps and formulas of a Word or EPUB export in the headless browser.
  * What cannot be drawn stays as its source, and is named in the warnings.
  * @param {Object} document What buildDocument returned
  * @param {Object} options The converter's options (`executablePath`)
@@ -43,12 +43,12 @@ function temporaryHtmlPath(absInputPath, absOutputPath) {
  */
 async function drawDocumentMedia(document, options) {
   const jobs = collectMedia(document.blocks);
-  if (!jobs.diagrams.length && !jobs.formulas.length) return { media: null, warnings: [] };
+  if (!jobs.diagrams.length && !jobs.mindmaps.length && !jobs.formulas.length) return { media: null, warnings: [] };
   let results;
   try {
     results = await drawMedia(jobs, { executablePath: options.executablePath });
   } catch (error) {
-    return { media: null, warnings: [`Mermaid diagrams and formulas are kept as their source: ${error.message}`] };
+    return { media: null, warnings: [`Mermaid diagrams, mind maps and formulas are kept as their source: ${error.message}`] };
   }
   const warnings = [];
   const unloaded = new Set();
@@ -58,6 +58,7 @@ async function drawDocumentMedia(document, options) {
     else warnings.push(describe(drawn.error));
   };
   results.diagrams.forEach((drawn, index) => note(drawn, error => `Mermaid diagram ${index + 1} is kept as its source: ${error}`));
+  (results.mindmaps || []).forEach((drawn, index) => note(drawn, error => `Mind map ${index + 1} is kept as its source: ${error}`));
   results.formulas.forEach((drawn, index) => {
     const { tex } = jobs.formulas[index];
     const shown = tex.length > 40 ? `${tex.slice(0, 40)}…` : tex;

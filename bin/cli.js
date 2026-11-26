@@ -42,6 +42,7 @@ program
   .option('-c, --css <path>', 'Custom CSS stylesheet file path to inject')
   .option('-k, --keep-html', 'Keep temporary HTML file after conversion', false)
   .option('--no-mermaid', 'Disable Mermaid diagram rendering')
+  .option('--no-markmap', 'Keep ```markmap blocks as code instead of drawing mind maps')
   .option('--no-katex', 'Disable KaTeX math formula rendering')
   .option('--no-highlight', 'Disable syntax highlighting of code blocks')
   .option('--no-include', 'Leave @import "file" lines as they are instead of inserting the file')
@@ -170,6 +171,7 @@ program
               cssFile: fileOptions.css,
               keepHtml: fileOptions.keepHtml,
               mermaid: fileOptions.mermaid,
+              markmap: fileOptions.markmap,
               katex: fileOptions.katex,
               highlight: fileOptions.highlight,
               include: fileOptions.include,

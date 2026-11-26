@@ -3,6 +3,8 @@
  * Draws the diagrams and formulas of a document for the Word and EPUB writers, in a browser
  * page that has Mermaid and KaTeX loaded: each Mermaid diagram becomes a PNG picture, each
  * formula KaTeX's MathML (which the writers turn into Word equations or keep as MathML).
+ * Mind maps (```markmap) become PNG pictures too, drawn by markmap.js (MdPdfMarkmap) with
+ * markmap-view, always in light colours.
  *
  * Runs in the page only: the CLI inlines it in the page its headless browser opens, and the
  * extension ships it as extension/lib/media.js (a test keeps the two copies identical).
@@ -38,7 +40,7 @@
     const holder = doc.createElement('div');
     holder.innerHTML = svgText;
     const svg = holder.querySelector('svg');
-    if (!svg) throw new Error('Mermaid drew no SVG');
+    if (!svg) throw new Error('no SVG was drawn');
     const box = svg.viewBox && svg.viewBox.baseVal;
     const width = box && box.width ? box.width : parseFloat(svg.getAttribute('width')) || 600;
     const height = box && box.height ? box.height : parseFloat(svg.getAttribute('height')) || 400;
@@ -66,16 +68,17 @@
 
   /**
    * Draws what a document needs.
-   * @param {{ diagrams: string[], formulas: { tex: string, display: boolean }[] }} jobs
+   * @param {{ diagrams: string[], mindmaps?: { tree: Object }[], formulas: { tex: string, display: boolean }[] }} jobs
    *   What docmodel's collectMedia found
-   * @param {{ mermaid?: object, katex?: object, document?: Document }} libraries Without
-   *   Mermaid or KaTeX that part is left undrawn
+   * @param {{ mermaid?: object, markmap?: object, katex?: object, document?: Document }} libraries
+   *   Without Mermaid, markmap-view or KaTeX that part is left undrawn
    * @returns {Promise<{ diagrams: ({ png: string, width: number, height: number } | { error: string })[],
-   *   formulas: ({ mathml: string } | { error: string })[] }>} in the order of the jobs
+   *   mindmaps: (the same)[], formulas: ({ mathml: string } | { error: string })[] }>} in the order
+   *   of the jobs
    */
   async function renderMedia(jobs, libraries) {
     const doc = libraries.document || scope.document;
-    const { mermaid, katex } = libraries;
+    const { mermaid, markmap, katex } = libraries;
     const diagrams = [];
     if (jobs.diagrams.length) {
       if (mermaid) mermaid.initialize(MERMAID_CONFIG);
@@ -89,6 +92,16 @@
         }
       }
     }
+    const mindmaps = [];
+    for (const job of jobs.mindmaps || []) {
+      if (!markmap || !scope.MdPdfMarkmap) { mindmaps.push({ error: 'Markmap is not loaded' }); continue; }
+      try {
+        const svg = await scope.MdPdfMarkmap.drawMarkmap(job.tree, { markmap, document: doc });
+        mindmaps.push(await rasterize(svg, doc));
+      } catch (err) {
+        mindmaps.push({ error: String((err && err.message) || err).split('\n')[0] });
+      }
+    }
     const formulas = jobs.formulas.map((formula) => {
       if (!katex) return { error: 'KaTeX is not loaded' };
       try {
@@ -97,7 +110,7 @@
         return { error: String((err && err.message) || err) };
       }
     });
-    return { diagrams, formulas };
+    return { diagrams, mindmaps, formulas };
   }
 
   const api = { renderMedia };

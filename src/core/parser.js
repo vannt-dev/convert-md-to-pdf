@@ -1,5 +1,6 @@
 /*! SPDX-License-Identifier: MIT | Copyright (c) 2026 Van Nguyen | github.com/vannt-dev/convert-md-to-pdf */
-const { Marked, Renderer } = require('marked');
+const markedLib = require('marked');
+const { Marked, Renderer } = markedLib;
 const obsidianSyntax = require('./obsidian');
 const hljs = require('highlight.js/lib/common');
 const { 
@@ -15,14 +16,16 @@ const { getHtmlTemplate } = require('./templates');
 const { applyFootnotes } = require('./footnotes');
 const { pageMarksCss } = require('./pagemarks');
 const { protectMath } = require('./math');
+const { markmapBlock } = require('./markmap');
 
 /**
  * Builds marked custom renderer for diagrams, UI mockups, and headings
  * @param {Map<string, string>} headingsMap 
  * @param {boolean} highlight Colour fenced code blocks that name a known language
+ * @param {boolean} markmap Draw ```markmap blocks as mind maps (markmap.js)
  * @returns {marked.Renderer}
  */
-function buildMarkedRenderer(headingsMap, highlight = true) {
+function buildMarkedRenderer(headingsMap, highlight = true, markmap = true) {
   const renderer = new Renderer();
   const originalCodeRenderer = renderer.code.bind(renderer);
 
@@ -32,6 +35,10 @@ function buildMarkedRenderer(headingsMap, highlight = true) {
 
     if (lang === 'mermaid') {
       return `<div class="mermaid-container"><pre class="mermaid">${text}</pre></div>`;
+    }
+
+    if (markmap && lang.trim().split(/\s+/)[0] === 'markmap') {
+      return markmapBlock(text, markedLib);
     }
 
     if (text.includes('┌') && text.includes('└')) {
@@ -63,7 +70,7 @@ function buildMarkedRenderer(headingsMap, highlight = true) {
  */
 function wrapSectionGroups(html) {
   let wrapped = html.replace(
-    /<h3>(.*?)<\/h3>\s*(<div class="ui-mockup-container">|<table|<div class="mermaid-container">|<ul|<ol)/g, 
+    /<h3>(.*?)<\/h3>\s*(<div class="ui-mockup-container">|<table|<div class="mermaid-container">|<div class="markmap-container">|<ul|<ol)/g, 
     '<div class="section-group"><h3>$1</h3>$2'
   );
   return wrapped.replace(
@@ -104,6 +111,7 @@ function parseMarkdownToHtml(rawMarkdownContent, options = {}) {
     pageNumbers: options.pageNumbers !== undefined ? options.pageNumbers : frontMatter.pageNumbers,
     watermark: options.watermark !== undefined ? options.watermark : frontMatter.watermark,
     mermaid: options.mermaid !== undefined ? options.mermaid : (frontMatter.mermaid !== false),
+    markmap: options.markmap !== undefined ? options.markmap !== false : (frontMatter.markmap !== false),
     katex: options.katex !== undefined ? options.katex : (frontMatter.katex !== false),
     highlight: options.highlight !== undefined ? options.highlight : (frontMatter.highlight !== false),
     obsidian: options.obsidian !== undefined ? options.obsidian !== false : (frontMatter.obsidian !== false),
@@ -160,7 +168,7 @@ function parseMarkdownToHtml(rawMarkdownContent, options = {}) {
   }
 
   // 6. Parse Markdown using custom renderer
-  const renderer = buildMarkedRenderer(headingsMap, mergedOptions.highlight);
+  const renderer = buildMarkedRenderer(headingsMap, mergedOptions.highlight, mergedOptions.markmap);
   const markdown = new Marked({ gfm: true, breaks: true }, { renderer });
   if (mergedOptions.obsidian) {
     const vault = options.vault || {};

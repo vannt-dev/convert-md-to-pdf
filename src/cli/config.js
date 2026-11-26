@@ -32,6 +32,7 @@ const CONFIG_KEYS = {
   css: STRING,
   keepHtml: BOOLEAN,
   mermaid: BOOLEAN,
+  markmap: BOOLEAN,
   katex: BOOLEAN,
   highlight: BOOLEAN,
   include: BOOLEAN,

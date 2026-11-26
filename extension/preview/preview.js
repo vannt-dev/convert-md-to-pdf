@@ -58,8 +58,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Word is written from the Markdown by the CLI's own writer (lib/docx-export.js), not from the
-    // preview: real headings, lists and tables. Diagrams become pictures and formulas Word
-    // equations, drawn here with the bundled Mermaid and KaTeX (lib/media.js); the theme stays behind.
+    // preview: real headings, lists and tables. Diagrams and mind maps become pictures and formulas
+    // Word equations, drawn here with the bundled Mermaid, markmap-view and KaTeX (lib/media.js);
+    // the theme stays behind.
     const btnDownloadDocx = document.getElementById('btn-download-docx');
     if (btnDownloadDocx) {
       btnDownloadDocx.addEventListener('click', async () => {
@@ -72,12 +73,14 @@ document.addEventListener('DOMContentLoaded', () => {
             toc: !!options.toc,
             cover: !!options.cover,
             mermaid: options.mermaid !== false && typeof mermaid !== 'undefined',
+            markmap: options.markmap !== false && typeof markmap !== 'undefined',
             katex: options.katex !== false && typeof katex !== 'undefined',
             obsidian: options.obsidian !== false
           };
           const jobs = MdPdfDocx.mediaJobs(markdownText, exportOptions);
           const drawn = await MdPdfMedia.renderMedia(jobs, {
             mermaid: typeof mermaid !== 'undefined' ? mermaid : null,
+            markmap: typeof markmap !== 'undefined' ? markmap : null,
             katex: typeof katex !== 'undefined' ? katex : null
           });
           const bytes = await MdPdfDocx.exportDocx(markdownText, {
@@ -202,6 +205,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (lang === 'mermaid' && options.mermaid !== false) {
         return `<div class="mermaid-container"><pre class="mermaid">${escapeHtml(text)}</pre></div>`;
       }
+
+      // Mind maps (lib/markmap.js, as in the CLI's src/core/parser.js)
+      if (options.markmap !== false && typeof MdPdfMarkmap !== 'undefined' && lang.trim().split(/\s+/)[0] === 'markmap') {
+        return MdPdfMarkmap.markmapBlock(text, marked);
+      }
       
       if (text.includes('┌') && text.includes('└')) {
         return `<div class="ui-mockup-container"><pre class="ui-mockup"><code>${escapeHtml(text)}</code></pre></div>`;
@@ -244,7 +252,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Wrap sections for page break
-    bodyHtml = bodyHtml.replace(/<h3>(.*?)<\/h3>\s*(<div class="ui-mockup-container">|<table|<div class="mermaid-container">|<ul|<ol)/g, 
+    bodyHtml = bodyHtml.replace(/<h3>(.*?)<\/h3>\s*(<div class="ui-mockup-container">|<table|<div class="mermaid-container">|<div class="markmap-container">|<ul|<ol)/g,
       '<div class="section-group"><h3>$1</h3>$2');
     bodyHtml = bodyHtml.replace(/(<\/table>|<\/div>|<\/ul>|<\/ol>)\s*(?=<h[1-4]>|<hr|\$)/g, '$1</div>');
 
@@ -255,6 +263,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Render KaTeX Math if enabled
     if (options.katex !== false && typeof katex !== 'undefined') {
       MdPdfMath.renderMath(contentEl, katex);
+    }
+
+    // Draw the mind maps (lib/markmap.js), in light text on the themes whose page is dark
+    if (options.markmap !== false && typeof markmap !== 'undefined' && typeof MdPdfMarkmap !== 'undefined') {
+      MdPdfMarkmap.renderMarkmaps(contentEl, { markmap, dark: options.theme === 'dark' || options.theme === 'cyberpunk' });
     }
 
     // Render Mermaid Diagrams if enabled
@@ -604,7 +617,10 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
 
     // Diagrams are drawn inside <pre class="mermaid">: keep the code-block look off them.
-    const mermaidResetCss = '\npre.mermaid[data-processed] { background: transparent; color: inherit; padding: 0; border: 0; border-radius: 0; margin: 0; white-space: normal; }\n';
+    const mermaidResetCss = '\npre.mermaid[data-processed] { background: transparent; color: inherit; padding: 0; border: 0; border-radius: 0; margin: 0; white-space: normal; }\n' +
+      // Mind maps: pictures the size of the map, shrunk to the page width (as src/core/themes/index.js)
+      '.markmap-container { display: block; text-align: center; margin: 14px 0; overflow-x: auto; break-inside: avoid-page; }\n' +
+      '.markmap-container > svg { display: inline-block; max-width: 100%; height: auto; }\n';
 
     return pageCss + '\n' + coverCss + '\n' + fontOverride + styles + tokenCss + mermaidResetCss + footnoteCss + '\n' + tocCss + '\n' + customCss;
   }

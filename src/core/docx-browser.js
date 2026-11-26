@@ -40,11 +40,12 @@ async function deflateRaw(bytes) {
 }
 
 /**
- * The Mermaid diagrams and formulas a document has, for the page to draw before the export
- * (extension/lib/media.js renderMedia), then hand over with mediaLookup as `options.media`.
+ * The Mermaid diagrams, mind maps and formulas a document has, for the page to draw before the
+ * export (extension/lib/media.js renderMedia), then hand over with mediaLookup as `options.media`.
  * @param {string} rawMarkdown
- * @param {Object} [options] The converter's options (`katex: false` and `mermaid: false` leave them out)
- * @returns {{ diagrams: string[], formulas: { tex: string, display: boolean }[] }}
+ * @param {Object} [options] The converter's options (`katex: false`, `mermaid: false` and
+ *   `markmap: false` leave them out)
+ * @returns {{ diagrams: string[], mindmaps: { text: string, tree: Object }[], formulas: { tex: string, display: boolean }[] }}
  */
 function mediaJobs(rawMarkdown, options = {}) {
   return collectMedia(buildDocument(rawMarkdown, options).blocks);
