@@ -28,6 +28,7 @@ Markdown to PDF Converter is a lightweight, privacy-focused extension that trans
 • 📑 Auto Cover Page Generator: Auto-build document report cover pages with title, subtitle, author, and date.
 • 📌 Dotted Leader Line TOC: Publication-grade Table of Contents with dotted leader lines (...) and clickable anchor links.
 • 📊 Native Mermaid.js Diagrams: Full support for sequence diagrams (with text wrapping), flowcharts, class diagrams, and gantt charts.
+• 🧠 Mind Maps: a ```markmap block's Markdown headings and lists are drawn as a mind map (markmap, bundled in the extension).
 • 📐 LaTeX Math Equations: Beautiful inline and display math formula rendering powered by KaTeX ($E = mc^2$).
 • 🎨 7 Preset Themes: Choose between Modern, Dark Mode, Academic, GitHub, E-Book, Cyberpunk, and Minimal.
 • 🔤 Open-Source Font Selector: Select your preferred typography (Inter, Roboto, Lora, Merriweather, JetBrains Mono, Fira Code).
@@ -56,6 +57,7 @@ Markdown to PDF Converter là tiện ích mở rộng nhẹ, an toàn bảo mậ
 • 📑 Trang bìa báo cáo tự động: Tự tạo trang bìa sang trọng hiển thị Tên tài liệu, Tác giả, Ngày lập và Subtitle.
 • 📌 Mục lục đường chấm (Dotted TOC): Tạo mục lục chuẩn xuất bản với đường chấm nối số trang và liên kết anchor link.
 • 📊 Sơ đồ Mermaid.js: Hỗ trợ đầy đủ sơ đồ trình tự (sequence diagram), lưu đồ (flowchart), class diagram, gantt chart...
+• 🧠 Sơ đồ tư duy (mind map): khối ```markmap vẽ các tiêu đề và danh sách Markdown thành sơ đồ tư duy (markmap, có sẵn trong tiện ích).
 • 📐 Công thức toán LaTeX: Hiển thị công thức toán học nội dòng và khối công thức sắc nét nhờ KaTeX.
 • 🎨 7 Giao diện (Themes): Modern, Dark Mode, Academic, GitHub, E-Book, Cyberpunk và Minimal.
 • 🔤 Bộ chọn Font chữ mở rộng: Tùy chọn font chữ chuyên nghiệp (Inter, Roboto, Lora, Merriweather, JetBrains Mono, Fira Code).

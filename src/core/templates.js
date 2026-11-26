@@ -7,12 +7,17 @@ const { getThemeStyles } = require('./themes');
 // (devDependencies in package.json; a test keeps them the same).
 const KATEX_VERSION = '0.19.1';
 const MERMAID_VERSION = '12.3.0';
+// Mind maps (```markmap blocks): markmap-view draws them with d3.
+const MARKMAP_VERSION = '0.18.13';
+const D3_VERSION = '7.9.2';
 
 // Themes whose diagram box is dark: Mermaid draws with its dark colours there.
 const DARK_DIAGRAM_THEMES = new Set(['dark', 'cyberpunk']);
 
 // Draws the math once KaTeX is loaded; the extension ships the same file as lib/math.js.
 const MATH_SCRIPT = fs.readFileSync(path.join(__dirname, 'math.js'), 'utf8');
+// Draws the mind maps once markmap-view is loaded; the extension ships it as lib/markmap.js.
+const MARKMAP_SCRIPT = fs.readFileSync(path.join(__dirname, 'markmap.js'), 'utf8');
 
 /**
  * Escapes special XML characters in title/metadata
@@ -38,6 +43,8 @@ function getHtmlTemplate({ title, author = '', language = 'en', bodyHtml, option
   const theme = options.theme || 'modern';
   const enableMermaid = options.mermaid !== false;
   const enableKatex = options.katex !== false;
+  // markmap-view and d3 are loaded only for a document that has a mind map.
+  const enableMarkmap = options.markmap !== false && bodyHtml.includes('class="markmap-source"');
   const pageSize = options.pageSize || 'A4';
   const orientation = options.orientation || 'portrait';
   const margin = options.margin || '14mm 12mm 16mm 12mm';
@@ -99,6 +106,20 @@ function getHtmlTemplate({ title, author = '', language = 'en', bodyHtml, option
             messageMargin: 35
           }
         });
+      }
+    });
+  </script>
+  ` : ''}
+
+  ${enableMarkmap ? `
+  <!-- markmap-view (and d3) for mind maps -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@${D3_VERSION}/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/markmap-view@${MARKMAP_VERSION}/dist/browser/index.js"></script>
+  <script>${MARKMAP_SCRIPT}</script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      if (typeof markmap !== 'undefined') {
+        MdPdfMarkmap.renderMarkmaps(document.body, { markmap: markmap, dark: ${DARK_DIAGRAM_THEMES.has(theme)} });
       }
     });
   </script>
@@ -221,5 +242,7 @@ module.exports = {
   getHtmlTemplate,
   getThemeStyles,
   KATEX_VERSION,
-  MERMAID_VERSION
+  MERMAID_VERSION,
+  MARKMAP_VERSION,
+  D3_VERSION
 };

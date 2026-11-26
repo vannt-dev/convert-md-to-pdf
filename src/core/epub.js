@@ -13,7 +13,7 @@ const { createZip } = require('./zip');
  * The book is split into one file per top-level heading, with a navigation
  * document (and an NCX for older readers) built from the headings. Local
  * images are embedded; an image on the web is replaced by a link to it, since
- * a reader may be offline. Mermaid diagrams become pictures and LaTeX formulas
+ * a reader may be offline. Mermaid diagrams and markmap mind maps become pictures and LaTeX formulas
  * MathML when `options.media` has them drawn (see docmodel's mediaLookup); without
  * it a diagram is kept as its source and a formula as typed. Themes and custom
  * CSS are not carried over: a reading system applies its own typography.
@@ -65,7 +65,7 @@ class EpubWriter {
   constructor(document, baseDir, media) {
     this.document = document;
     this.baseDir = baseDir;
-    this.media = media || { diagram: () => null, formula: () => null };
+    this.media = media || { diagram: () => null, mindmap: () => null, formula: () => null };
     this.images = [];
     this.imagePaths = new Map();
     // Where each heading ends up, so a link to `#slug` can name the right file.
@@ -134,8 +134,10 @@ class EpubWriter {
   }
 
   diagram(block) {
-    const image = this.media.diagram(block.text);
-    if (!image) return this.code({ lang: 'mermaid', text: block.text });
+    const mindmap = block.type === 'mindmap';
+    // A lookup made before mind maps were drawn has no `mindmap`.
+    const image = mindmap ? (this.media.mindmap ? this.media.mindmap(block.text) : null) : this.media.diagram(block.text);
+    if (!image) return this.code({ lang: mindmap ? 'markmap' : 'mermaid', text: block.text });
     const name = `images/diagram-${this.images.length + 1}.${image.extension}`;
     this.images.push({ name, data: image.data, mediaType: image.mediaType });
     // The source is the description: what a reader that cannot show pictures can tell of it.
@@ -165,6 +167,7 @@ class EpubWriter {
           output += this.code(block);
           break;
         case 'diagram':
+        case 'mindmap':
           output += this.diagram(block);
           break;
         case 'math': {

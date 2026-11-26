@@ -1216,7 +1216,7 @@ Text`, { toc: true });
     const off = buildDocument(mediaSource, { katex: false, mermaid: false }).blocks;
     assert.strictEqual(off[1].type, 'code');
     assert.ok(!JSON.stringify(off).includes('"math"'));
-    assert.deepStrictEqual(collectMedia(off), { diagrams: [], formulas: [] });
+    assert.deepStrictEqual(collectMedia(off), { diagrams: [], mindmaps: [], formulas: [] });
   });
 
   test('omml: KaTeX MathML becomes Office Math, and clean MathML for EPUB', () => {
@@ -1351,7 +1351,212 @@ Text`, { toc: true });
     assert.ok(fromPage.readAsText('word/document.xml').includes('<m:oMathPara>'));
     // Without Mermaid loaded a diagram is reported, not thrown.
     const missing = await context.MdPdfMedia.renderMedia({ diagrams: ['flowchart LR'], formulas: [] }, { document: {} });
-    assert.deepStrictEqual(JSON.parse(JSON.stringify(missing)), { diagrams: [{ error: 'Mermaid is not loaded' }], formulas: [] });
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(missing)), { diagrams: [{ error: 'Mermaid is not loaded' }], mindmaps: [], formulas: [] });
+  });
+
+  // Mind maps: a ```markmap block's headings and lists, drawn by markmap-view (src/core/markmap.js).
+  const markmapLib = require('../src/core/markmap');
+  const mindmapSource = [
+    '# Plan',
+    '',
+    '```markmap',
+    '---',
+    'markmap:',
+    '  colorFreezeLevel: 2',
+    '  maxWidth: 200',
+    '  color: ["#2563eb", "#16a34a"]',
+    '---',
+    '# Release',
+    '## Research',
+    '- Users with `five` teams',
+    '- [Survey](https://example.com) and [bad](javascript:alert(1))',
+    '  - Nested <img src=x onerror=alert(1)>',
+    '## Build',
+    '- [x] Design',
+    '- [ ] Docs',
+    '',
+    'A paragraph under Build',
+    '```',
+    ''
+  ].join('\n');
+  const mindmapBlockText = mindmapSource.split('```markmap\n')[1].split('```')[0].replace(/\n$/, '');
+
+  test('markmap.toTree: headings and lists become the tree, with the block\'s own options', () => {
+    const tree = markmapLib.toTree(mindmapBlockText, require('marked'));
+    assert.deepStrictEqual(tree.options, { colorFreezeLevel: 2, maxWidth: 200, color: ['#2563eb', '#16a34a'] });
+    // One top-level heading is the centre of the map.
+    assert.strictEqual(tree.root.content, 'Release');
+    assert.deepStrictEqual(tree.root.children.map(child => child.content), ['Research', 'Build']);
+    const [research, build] = tree.root.children;
+    assert.strictEqual(research.children[0].content, 'Users with <code>five</code> teams');
+    // A web link is kept; a javascript: one and HTML written into a node are text.
+    const survey = research.children[1];
+    assert.strictEqual(survey.content, '<a href="https://example.com">Survey</a> and bad');
+    assert.strictEqual(survey.children[0].content, 'Nested &lt;img src=x onerror=alert(1)&gt;');
+    assert.deepStrictEqual(build.children.map(child => child.content), ['&#9745; Design', '&#9744; Docs', 'A paragraph under Build']);
+
+    // Several top-level items hang off an empty centre; nothing to draw is null.
+    const flat = markmapLib.toTree('- a\n- b', require('marked'));
+    assert.deepStrictEqual(flat.root, { content: '', children: [{ content: 'a', children: [] }, { content: 'b', children: [] }] });
+    assert.strictEqual(markmapLib.toTree('   \n', require('marked')), null);
+    // A heading deeper than the next one: the next goes back up the tree.
+    const levels = markmapLib.toTree('# A\n### deep\n## B', require('marked')).root;
+    assert.deepStrictEqual(levels.children.map(child => child.content), ['deep', 'B']);
+  });
+
+  test('markmap: the PDF and HTML draw ```markmap blocks, and load markmap-view only for them', () => {
+    const { MARKMAP_VERSION, D3_VERSION } = require('../src/core/templates');
+    const dev = require('../package.json').devDependencies;
+    assert.strictEqual(MARKMAP_VERSION, dev['markmap-view']);
+    assert.strictEqual(D3_VERSION, dev.d3);
+    const html = parseMarkdownToHtml(mindmapSource);
+    assert.ok(html.includes('<div class="markmap-container"><pre class="markmap-source" data-markmap="{&quot;root&quot;'), 'the tree is in the page');
+    assert.ok(html.includes('# Release\n## Research'), 'the source is shown where the map cannot be drawn');
+    assert.ok(!html.includes('<img src=x'), 'no HTML from the block gets into the page');
+    assert.ok(html.includes(`d3@${D3_VERSION}/dist/d3.min.js`));
+    assert.ok(html.includes(`markmap-view@${MARKMAP_VERSION}/dist/browser/index.js`));
+    assert.ok(html.includes('MdPdfMarkmap.renderMarkmaps(document.body, { markmap: markmap, dark: false })'));
+    assert.ok(parseMarkdownToHtml(mindmapSource, { theme: 'dark' }).includes('dark: true })'));
+    // Nothing loaded for a document without one, and `--no-markmap` / `markmap: false` keep the code.
+    assert.ok(!parseMarkdownToHtml('# x\n\n```js\nx\n```').includes('markmap-view@'));
+    for (const off of [parseMarkdownToHtml(mindmapSource, { markmap: false }), parseMarkdownToHtml(`---\nmarkmap: false\n---\n${mindmapSource}`)]) {
+      assert.ok(!off.includes('markmap-source') && !off.includes('markmap-view@'));
+      assert.ok(off.includes('<code class="language-markmap">'));
+    }
+    const { CONFIG_KEYS } = require('../src/cli/config');
+    assert.ok('markmap' in CONFIG_KEYS);
+    // The table of contents leaves out the headings inside a fence (the mind map's, or any code).
+    const toc = generateToc(`${mindmapSource}
+~~~~md
+# In code
+~~~
+# Still code
+~~~~
+
+## After
+`).tocHtml;
+    assert.ok(toc.includes('>Plan<') && toc.includes('>After<'));
+    assert.ok(!toc.includes('Release') && !toc.includes('Research') && !toc.includes('code<'), toc);
+  });
+
+  test('extension: ships markmap-view, d3 and markmap.js, loaded in order by the preview', () => {
+    const root = path.join(__dirname, '..');
+    const same = (shipped, source) => assert.ok(
+      fs.readFileSync(path.join(extensionRoot, 'lib', shipped)).equals(fs.readFileSync(path.join(root, source))),
+      `extension/lib/${shipped} must be a copy of ${source}: run \`npm run fetch:libs\``
+    );
+    same('d3.min.js', 'node_modules/d3/dist/d3.min.js');
+    same('markmap-view.js', 'node_modules/markmap-view/dist/browser/index.js');
+    same('markmap.js', 'src/core/markmap.js');
+    // Licences: markmap-view is MIT, d3 ISC.
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(root, 'node_modules/markmap-view/package.json'), 'utf8')).license, 'MIT');
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(root, 'node_modules/d3/package.json'), 'utf8')).license, 'ISC');
+    // Nothing is loaded from the web by the shipped libraries.
+    for (const file of ['d3.min.js', 'markmap-view.js', 'markmap.js']) {
+      const text = fs.readFileSync(path.join(extensionRoot, 'lib', file), 'utf8');
+      assert.ok(!/(?:src|href)\s*[:=]\s*["'`]https?:/.test(text) && !/cdn\.jsdelivr|unpkg\.com/.test(text), file);
+    }
+    const page = fs.readFileSync(path.join(extensionRoot, 'preview/preview.html'), 'utf8');
+    const at = file => page.indexOf(`<script src="../lib/${file}"></script>`);
+    assert.ok(at('d3.min.js') > 0 && at('d3.min.js') < at('markmap-view.js') && at('markmap-view.js') < at('markmap.js'));
+    assert.ok(at('markmap.js') < at('media.js'), 'media.js draws the Word pictures with it');
+    const script = fs.readFileSync(path.join(extensionRoot, 'preview/preview.js'), 'utf8');
+    assert.ok(script.includes('MdPdfMarkmap.markmapBlock(text, marked)') && script.includes('MdPdfMarkmap.renderMarkmaps(contentEl'));
+    assert.ok(fs.readFileSync(path.join(extensionRoot, 'popup/popup.html'), 'utf8').includes('id="chk-markmap"'));
+  });
+
+  test('markmap: Word and EPUB get the mind map as a picture, or its source as code', () => {
+    const AdmZip = require('adm-zip');
+    const { blocks } = buildDocument(mindmapSource, {});
+    assert.strictEqual(blocks[1].type, 'mindmap');
+    assert.strictEqual(blocks[1].text, mindmapBlockText);
+    assert.strictEqual(blocks[1].tree.root.content, 'Release');
+    const jobs = collectMedia(blocks);
+    assert.deepStrictEqual(jobs.mindmaps.map(job => job.text), [mindmapBlockText]);
+    assert.strictEqual(buildDocument(mindmapSource, { markmap: false }).blocks[1].type, 'code');
+
+    const drawn = { diagrams: [], formulas: [], mindmaps: [{ png: png.toString('base64'), width: 500, height: 240 }] };
+    const docx = new AdmZip(markdownToDocx(mindmapSource, { media: mediaLookup(jobs, drawn) }));
+    const document = docx.readAsText('word/document.xml');
+    assertWellFormed(document, 'document.xml');
+    assert.ok(docx.getEntry('word/media/image1.png').getData().equals(png));
+    assert.ok(document.includes(`<wp:extent cx="${500 * 9525}" cy="${240 * 9525}"/>`));
+    assert.ok(document.includes('descr="---&#10;markmap:'), 'described by its source');
+    const epub = new AdmZip(markdownToEpub(mindmapSource, { media: mediaLookup(jobs, drawn) }));
+    assert.ok(epub.getEntry('OEBPS/images/diagram-1.png').getData().equals(png));
+    assertWellFormed(epub.readAsText('OEBPS/chapter-1.xhtml'), 'chapter-1.xhtml');
+
+    // Not drawn (or a lookup from before mind maps): the source as a code block.
+    for (const media of [mediaLookup(jobs, { diagrams: [], formulas: [], mindmaps: [{ error: 'x' }] }), { diagram: () => null, formula: () => null }]) {
+      const bare = new AdmZip(markdownToDocx(mindmapSource, { media }));
+      assert.ok(!bare.getEntry('word/media/image1.png'));
+      assert.ok(bare.readAsText('word/document.xml').includes('<w:t xml:space="preserve"># Release</w:t>'));
+    }
+    // The headless browser's page loads markmap-view and d3 only for a document with a mind map.
+    const { mediaPage } = require('../src/browser/media');
+    const page = mediaPage(jobs);
+    assert.ok(page.includes('/dist/d3.min.js') && page.includes('markmap-view@') && page.includes('MdPdfMarkmap'));
+    assert.ok(!mediaPage({ diagrams: ['x'], formulas: [] }).includes('markmap-view@'));
+  });
+
+  await asyncTest('core.convertMarkdownToPdf: Word gets a mind map drawn by the headless browser', async () => {
+    const { findBrowserExecutable } = require('../src/browser/renderer');
+    const { imageSize } = require('../src/core/images');
+    if (!findBrowserExecutable()) {
+      console.log('   (skipped: no Chrome, Edge or Chromium here)');
+      return;
+    }
+    const AdmZip = require('adm-zip');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-pdf-mindmap-'));
+    const source = path.join(dir, 'map.md');
+    fs.writeFileSync(source, mindmapSource, 'utf8');
+    try {
+      const docx = await convertMarkdownToPdf(source, null, { format: 'docx' });
+      if (docx.warnings.some(warning => warning.includes('cdn.jsdelivr.net'))) {
+        console.log(`   (skipped: ${docx.warnings[0]})`);
+        return;
+      }
+      assert.deepStrictEqual(docx.warnings, []);
+      const picture = new AdmZip(docx.outputPath).getEntry('word/media/image1.png').getData();
+      assert.strictEqual(picture.readUInt32BE(0), 0x89504e47);
+      // Wider than tall, as a left-to-right map of this outline is, and bigger than a stub.
+      const size = imageSize(picture);
+      assert.ok(size.width > size.height && size.width > 300, `${size.width} x ${size.height}`);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  await asyncTest('markmap: the page draws the map, and a tree written by hand into the page is drawn as text', async () => {
+    const { findBrowserExecutable } = require('../src/browser/renderer');
+    const browser = findBrowserExecutable();
+    if (!browser) {
+      console.log('   (skipped: no Chrome, Edge or Chromium here)');
+      return;
+    }
+    const { execFile } = require('child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-pdf-mindmap-page-'));
+    const forged = JSON.stringify({ root: { content: '<img src="x" onerror="document.title=\'pwned\'">forged <b onclick="x()">bold</b> <a href="javascript:x()">link</a>', children: [] }, options: {} });
+    const page = path.join(dir, 'page.html');
+    fs.writeFileSync(page, parseMarkdownToHtml(`${mindmapSource}\n<pre class="markmap-source" data-markmap='${forged.replace(/'/g, '&#39;')}'>x</pre>\n`), 'utf8');
+    try {
+      const dom = await new Promise((resolve, reject) => execFile(browser, [
+        '--headless=new', '--disable-gpu', '--no-sandbox', '--virtual-time-budget=15000', '--dump-dom', pathToFileURL(page).href
+      ], { timeout: 120000, maxBuffer: 64 * 1024 * 1024, encoding: 'utf8' }, (error, stdout) => (error ? reject(error) : resolve(stdout))));
+      const maps = dom.match(/<svg[^>]*class="markmap[^"]*"/g) || [];
+      if (!maps.length && dom.includes('markmap-source')) {
+        console.log('   (skipped: markmap-view could not be loaded from cdn.jsdelivr.net)');
+        return;
+      }
+      assert.strictEqual(maps.length, 2, 'both blocks are drawn');
+      assert.ok(dom.includes('>Release<') && dom.includes('<a href="https://example.com">Survey</a>'));
+      assert.ok(dom.includes('forged <b>bold</b> <a>link</a>'), 'only the tags toTree writes, without their attributes');
+      // (The first map's source, with its javascript: link and <img>, is only its aria-label text.)
+      assert.ok(!dom.includes('onerror="document.title') && !dom.includes('onclick="x()"') && !dom.includes('href="javascript:'));
+      assert.ok(!dom.includes('<title>pwned</title>'));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test('images: a file:// address finds the picture on macOS, Linux and Windows alike', () => {

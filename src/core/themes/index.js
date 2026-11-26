@@ -38,10 +38,16 @@ function getFontOverrideCss(font) {
   return `body { font-family: '${font}', sans-serif !important; }\n`;
 }
 
+// Mind maps (markmap.js) are pictures the size of the map, shrunk to the page width when wider.
+// The extension preview has the same rules (extension/preview/preview.js).
+const MARKMAP_CSS = `.markmap-container { display: block; text-align: center; margin: 14px 0; overflow-x: auto; break-inside: avoid-page; }
+.markmap-container > svg { display: inline-block; max-width: 100%; height: auto; }
+`;
+
 // Diagrams are drawn inside <pre class="mermaid">: keep the code-block look off them.
 const MERMAID_RESET_CSS = `
 pre.mermaid[data-processed] { background: transparent; color: inherit; padding: 0; border: 0; border-radius: 0; margin: 0; white-space: normal; }
-`;
+${MARKMAP_CSS}`;
 
 /**
  * Returns complete CSS theme string with cover page and font override

@@ -1,11 +1,13 @@
 /*! SPDX-License-Identifier: MIT | Copyright (c) 2026 Van Nguyen | github.com/vannt-dev/convert-md-to-pdf */
-const { Marked } = require('marked');
+const markedLib = require('marked');
+const { Marked } = markedLib;
 const { parseFrontMatter } = require('./frontmatter');
 const { applyFootnotes } = require('./footnotes');
 const { preprocessMarkdown } = require('./preprocess');
 const { protectMath } = require('./math');
 const { parseMathml } = require('./omml');
 const obsidianSyntax = require('./obsidian');
+const { toTree } = require('./markmap');
 
 /**
  * A format-neutral model of a Markdown document, for the exporters that do
@@ -20,6 +22,7 @@ const obsidianSyntax = require('./obsidian');
  *   { type: 'table', header: [{ align, runs }], rows: [[{ align, runs }]] }
  *   { type: 'rule' } | { type: 'pageBreak' }
  *   { type: 'diagram', text }        a Mermaid diagram, as its source
+ *   { type: 'mindmap', text, tree }  a ```markmap mind map: its source, and markmap.js toTree
  *   { type: 'math', tex, raw }       a formula on lines of its own
  *
  * Runs are flat: nested emphasis becomes flags on each piece of text, so a
@@ -260,8 +263,9 @@ function plainText(runs) {
 
 /**
  * @param {Object[]} tokens marked's tokens
- * @param {{ slug: Function, formulas: Object[], diagrams: boolean }} context How headings get
- *   their ids, what the math stand-ins hold, and whether Mermaid code is a diagram
+ * @param {{ slug: Function, formulas: Object[], diagrams: boolean, mindmaps: boolean }} context How
+ *   headings get their ids, what the math stand-ins hold, and whether Mermaid and markmap code
+ *   are drawn
  */
 function toBlocks(tokens, context) {
   const { slug, formulas } = context;
@@ -280,7 +284,9 @@ function toBlocks(tokens, context) {
         const lang = (token.lang || '').trim().split(/\s+/)[0];
         // Indented code is not passed over when the formulas are taken out.
         const text = restoreFormulas(token.text || '', formulas);
+        const tree = lang === 'markmap' && context.mindmaps ? toTree(text, markedLib) : null;
         if (lang === 'mermaid' && context.diagrams && text.trim()) blocks.push({ type: 'diagram', text });
+        else if (tree) blocks.push({ type: 'mindmap', text, tree });
         else blocks.push({ type: 'code', lang, text });
         break;
       }
@@ -357,6 +363,8 @@ function buildDocument(rawMarkdown = '', options = {}) {
     // As in the PDF: `--no-katex` and `--no-mermaid`, or `katex: false` and `mermaid: false`.
     math: options.katex !== undefined ? options.katex !== false : frontMatter.katex !== false,
     diagrams: options.mermaid !== undefined ? options.mermaid !== false : frontMatter.mermaid !== false,
+    // ```markmap mind maps: `--no-markmap` or `markmap: false` keeps them as code
+    mindmaps: options.markmap !== undefined ? options.markmap !== false : frontMatter.markmap !== false,
     // Obsidian syntax (obsidian.js): on unless `obsidian: false`
     obsidian: options.obsidian !== undefined ? options.obsidian !== false : frontMatter.obsidian !== false
   };
@@ -376,7 +384,7 @@ function buildDocument(rawMarkdown = '', options = {}) {
     }));
   }
   const tokens = markdown.lexer(processed);
-  const context = { slug: createSlugger(), formulas: math ? math.formulas : [], diagrams: settings.diagrams };
+  const context = { slug: createSlugger(), formulas: math ? math.formulas : [], diagrams: settings.diagrams, mindmaps: settings.mindmaps };
   return { meta, blocks: toBlocks(tokens, context), settings };
 }
 
@@ -391,13 +399,15 @@ function collectHeadings(blocks, found = []) {
 }
 
 /**
- * The diagrams and formulas of a document, each once, for whatever draws them before a writer
- * runs: the CLI's headless browser, or the extension's page.
+ * The diagrams, mind maps and formulas of a document, each once, for whatever draws them before
+ * a writer runs: the CLI's headless browser, or the extension's page.
  * @param {Object[]} blocks
- * @returns {{ diagrams: string[], formulas: { tex: string, display: boolean }[] }}
+ * @returns {{ diagrams: string[], mindmaps: { text: string, tree: Object }[],
+ *   formulas: { tex: string, display: boolean }[] }}
  */
 function collectMedia(blocks) {
   const diagrams = new Set();
+  const mindmaps = new Map();
   const formulas = new Map();
   const addRuns = runs => {
     for (const run of runs) {
@@ -407,6 +417,7 @@ function collectMedia(blocks) {
   const walk = list => {
     for (const block of list) {
       if (block.type === 'diagram') diagrams.add(block.text);
+      else if (block.type === 'mindmap') mindmaps.set(block.text, { text: block.text, tree: block.tree });
       else if (block.type === 'math') formulas.set(mathKey(block.tex, true), { tex: block.tex, display: true });
       else if (block.runs) addRuns(block.runs);
       else if (block.type === 'quote') walk(block.blocks);
@@ -415,7 +426,7 @@ function collectMedia(blocks) {
     }
   };
   walk(blocks);
-  return { diagrams: [...diagrams], formulas: [...formulas.values()] };
+  return { diagrams: [...diagrams], mindmaps: [...mindmaps.values()], formulas: [...formulas.values()] };
 }
 
 /** How a drawn formula is looked up: the same TeX can be drawn inline and on a line of its own. */
@@ -423,23 +434,34 @@ function mathKey(tex, display) {
   return `${display ? 'D' : 'I'}:${tex}`;
 }
 
+/** A drawn picture as the writers take it, or null when it was not drawn. */
+function pngImage(drawn) {
+  if (!drawn || !drawn.png || !(drawn.width > 0) || !(drawn.height > 0)) return null;
+  const data = Uint8Array.from(atob(drawn.png), character => character.charCodeAt(0));
+  return { data, extension: 'png', mediaType: 'image/png', size: { width: drawn.width, height: drawn.height } };
+}
+
 /**
- * What the writers look the drawn diagrams and formulas up in.
- * @param {{ diagrams: string[], formulas: { tex: string, display: boolean }[] }} jobs What
- *   collectMedia found
- * @param {{ diagrams: Object[], formulas: Object[] }} results What media.js renderMedia drew for
- *   them, in the same order; one that failed carries an `error` and is left out
- * @returns {{ diagram: (text: string) => Object | null, formula: (tex: string, display: boolean) => Object | null }}
- *   a diagram as an image (`{ data, extension, mediaType, size }`), a formula as parsed MathML
+ * What the writers look the drawn diagrams, mind maps and formulas up in.
+ * @param {{ diagrams: string[], mindmaps?: { text: string }[], formulas: { tex: string, display: boolean }[] }} jobs
+ *   What collectMedia found
+ * @param {{ diagrams: Object[], mindmaps?: Object[], formulas: Object[] }} results What media.js
+ *   renderMedia drew for them, in the same order; one that failed carries an `error` and is left out
+ * @returns {{ diagram: (text: string) => Object | null, mindmap: (text: string) => Object | null,
+ *   formula: (tex: string, display: boolean) => Object | null }} a diagram or mind map as an image
+ *   (`{ data, extension, mediaType, size }`), a formula as parsed MathML
  */
 function mediaLookup(jobs, results = {}) {
   const diagrams = new Map();
+  const mindmaps = new Map();
   const formulas = new Map();
   jobs.diagrams.forEach((text, index) => {
-    const drawn = (results.diagrams || [])[index];
-    if (!drawn || !drawn.png || !(drawn.width > 0) || !(drawn.height > 0)) return;
-    const data = Uint8Array.from(atob(drawn.png), character => character.charCodeAt(0));
-    diagrams.set(text, { data, extension: 'png', mediaType: 'image/png', size: { width: drawn.width, height: drawn.height } });
+    const image = pngImage((results.diagrams || [])[index]);
+    if (image) diagrams.set(text, image);
+  });
+  (jobs.mindmaps || []).forEach((job, index) => {
+    const image = pngImage((results.mindmaps || [])[index]);
+    if (image) mindmaps.set(job.text, image);
   });
   jobs.formulas.forEach((formula, index) => {
     const drawn = (results.formulas || [])[index];
@@ -448,6 +470,7 @@ function mediaLookup(jobs, results = {}) {
   });
   return {
     diagram: text => diagrams.get(text) || null,
+    mindmap: text => mindmaps.get(text) || null,
     formula: (tex, display) => formulas.get(mathKey(tex, display)) || null
   };
 }

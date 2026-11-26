@@ -45,11 +45,12 @@ async function deflateRaw(bytes) {
 }
 
 /**
- * The Mermaid diagrams and formulas a document has, for the page to draw before the export
- * (extension/lib/media.js renderMedia), then hand over with mediaLookup as `options.media`.
+ * The Mermaid diagrams, mind maps and formulas a document has, for the page to draw before the
+ * export (extension/lib/media.js renderMedia), then hand over with mediaLookup as `options.media`.
  * @param {string} rawMarkdown
- * @param {Object} [options] The converter's options (`katex: false` and `mermaid: false` leave them out)
- * @returns {{ diagrams: string[], formulas: { tex: string, display: boolean }[] }}
+ * @param {Object} [options] The converter's options (`katex: false`, `mermaid: false` and
+ *   `markmap: false` leave them out)
+ * @returns {{ diagrams: string[], mindmaps: { text: string, tree: Object }[], formulas: { tex: string, display: boolean }[] }}
  */
 function mediaJobs(rawMarkdown, options = {}) {
   return collectMedia(buildDocument(rawMarkdown, options).blocks);
@@ -86,7 +87,7 @@ const { createZip } = require('./zip');
  * HTML: headings, lists, tables, code and quotes become real Word styles and
  * structures, which a reader can restyle, instead of formatted lookalikes.
  *
- * Mermaid diagrams become pictures and LaTeX formulas Word equations when
+ * Mermaid diagrams and markmap mind maps become pictures and LaTeX formulas Word equations when
  * `options.media` has them drawn (see docmodel's collectMedia and mediaLookup);
  * without it a diagram is kept as its source and a formula as typed. Themes and
  * custom CSS are not carried over. Images are embedded when they are local PNG,
@@ -96,7 +97,7 @@ const { createZip } = require('./zip');
 const TWIPS_PER_MM = 1440 / 25.4;
 const EMU_PER_PIXEL = 9525;
 const EMU_PER_TWIP = 635;
-const NO_MEDIA = { diagram: () => null, formula: () => null };
+const NO_MEDIA = { diagram: () => null, mindmap: () => null, formula: () => null };
 const PAGE_SIZES = { A4: [11906, 16838], LETTER: [12240, 15840], A3: [16838, 23811], LEGAL: [12240, 20160] };
 const HEADING_SIZES = [36, 30, 26, 24, 22, 22];
 const CODE_FONT = 'Consolas';
@@ -339,10 +340,13 @@ class DocxWriter {
           output += this.paragraph('', { style: 'CodeSpacer' });
           break;
         }
-        case 'diagram': {
-          const image = this.media.diagram(block.text);
+        case 'diagram':
+        case 'mindmap': {
+          const mindmap = block.type === 'mindmap';
+          // A lookup made before mind maps were drawn has no `mindmap`.
+          const image = mindmap ? (this.media.mindmap ? this.media.mindmap(block.text) : null) : this.media.diagram(block.text);
           if (!image) {
-            output += this.blocks([{ type: 'code', lang: 'mermaid', text: block.text }], { ...context, numbering: null });
+            output += this.blocks([{ type: 'code', lang: mindmap ? 'markmap' : 'mermaid', text: block.text }], { ...context, numbering: null });
             break;
           }
           // The description is the diagram's source: what a screen reader can tell of it.
@@ -634,13 +638,15 @@ module.exports = {
   },
   "docmodel": function (module, exports, require) {
 /*! SPDX-License-Identifier: MIT | Copyright (c) 2026 Van Nguyen | github.com/vannt-dev/convert-md-to-pdf */
-const { Marked } = require('marked');
+const markedLib = require('marked');
+const { Marked } = markedLib;
 const { parseFrontMatter } = require('./frontmatter');
 const { applyFootnotes } = require('./footnotes');
 const { preprocessMarkdown } = require('./preprocess');
 const { protectMath } = require('./math');
 const { parseMathml } = require('./omml');
 const obsidianSyntax = require('./obsidian');
+const { toTree } = require('./markmap');
 
 /**
  * A format-neutral model of a Markdown document, for the exporters that do
@@ -655,6 +661,7 @@ const obsidianSyntax = require('./obsidian');
  *   { type: 'table', header: [{ align, runs }], rows: [[{ align, runs }]] }
  *   { type: 'rule' } | { type: 'pageBreak' }
  *   { type: 'diagram', text }        a Mermaid diagram, as its source
+ *   { type: 'mindmap', text, tree }  a ```markmap mind map: its source, and markmap.js toTree
  *   { type: 'math', tex, raw }       a formula on lines of its own
  *
  * Runs are flat: nested emphasis becomes flags on each piece of text, so a
@@ -895,8 +902,9 @@ function plainText(runs) {
 
 /**
  * @param {Object[]} tokens marked's tokens
- * @param {{ slug: Function, formulas: Object[], diagrams: boolean }} context How headings get
- *   their ids, what the math stand-ins hold, and whether Mermaid code is a diagram
+ * @param {{ slug: Function, formulas: Object[], diagrams: boolean, mindmaps: boolean }} context How
+ *   headings get their ids, what the math stand-ins hold, and whether Mermaid and markmap code
+ *   are drawn
  */
 function toBlocks(tokens, context) {
   const { slug, formulas } = context;
@@ -915,7 +923,9 @@ function toBlocks(tokens, context) {
         const lang = (token.lang || '').trim().split(/\s+/)[0];
         // Indented code is not passed over when the formulas are taken out.
         const text = restoreFormulas(token.text || '', formulas);
+        const tree = lang === 'markmap' && context.mindmaps ? toTree(text, markedLib) : null;
         if (lang === 'mermaid' && context.diagrams && text.trim()) blocks.push({ type: 'diagram', text });
+        else if (tree) blocks.push({ type: 'mindmap', text, tree });
         else blocks.push({ type: 'code', lang, text });
         break;
       }
@@ -992,6 +1002,8 @@ function buildDocument(rawMarkdown = '', options = {}) {
     // As in the PDF: `--no-katex` and `--no-mermaid`, or `katex: false` and `mermaid: false`.
     math: options.katex !== undefined ? options.katex !== false : frontMatter.katex !== false,
     diagrams: options.mermaid !== undefined ? options.mermaid !== false : frontMatter.mermaid !== false,
+    // ```markmap mind maps: `--no-markmap` or `markmap: false` keeps them as code
+    mindmaps: options.markmap !== undefined ? options.markmap !== false : frontMatter.markmap !== false,
     // Obsidian syntax (obsidian.js): on unless `obsidian: false`
     obsidian: options.obsidian !== undefined ? options.obsidian !== false : frontMatter.obsidian !== false
   };
@@ -1011,7 +1023,7 @@ function buildDocument(rawMarkdown = '', options = {}) {
     }));
   }
   const tokens = markdown.lexer(processed);
-  const context = { slug: createSlugger(), formulas: math ? math.formulas : [], diagrams: settings.diagrams };
+  const context = { slug: createSlugger(), formulas: math ? math.formulas : [], diagrams: settings.diagrams, mindmaps: settings.mindmaps };
   return { meta, blocks: toBlocks(tokens, context), settings };
 }
 
@@ -1026,13 +1038,15 @@ function collectHeadings(blocks, found = []) {
 }
 
 /**
- * The diagrams and formulas of a document, each once, for whatever draws them before a writer
- * runs: the CLI's headless browser, or the extension's page.
+ * The diagrams, mind maps and formulas of a document, each once, for whatever draws them before
+ * a writer runs: the CLI's headless browser, or the extension's page.
  * @param {Object[]} blocks
- * @returns {{ diagrams: string[], formulas: { tex: string, display: boolean }[] }}
+ * @returns {{ diagrams: string[], mindmaps: { text: string, tree: Object }[],
+ *   formulas: { tex: string, display: boolean }[] }}
  */
 function collectMedia(blocks) {
   const diagrams = new Set();
+  const mindmaps = new Map();
   const formulas = new Map();
   const addRuns = runs => {
     for (const run of runs) {
@@ -1042,6 +1056,7 @@ function collectMedia(blocks) {
   const walk = list => {
     for (const block of list) {
       if (block.type === 'diagram') diagrams.add(block.text);
+      else if (block.type === 'mindmap') mindmaps.set(block.text, { text: block.text, tree: block.tree });
       else if (block.type === 'math') formulas.set(mathKey(block.tex, true), { tex: block.tex, display: true });
       else if (block.runs) addRuns(block.runs);
       else if (block.type === 'quote') walk(block.blocks);
@@ -1050,7 +1065,7 @@ function collectMedia(blocks) {
     }
   };
   walk(blocks);
-  return { diagrams: [...diagrams], formulas: [...formulas.values()] };
+  return { diagrams: [...diagrams], mindmaps: [...mindmaps.values()], formulas: [...formulas.values()] };
 }
 
 /** How a drawn formula is looked up: the same TeX can be drawn inline and on a line of its own. */
@@ -1058,23 +1073,34 @@ function mathKey(tex, display) {
   return `${display ? 'D' : 'I'}:${tex}`;
 }
 
+/** A drawn picture as the writers take it, or null when it was not drawn. */
+function pngImage(drawn) {
+  if (!drawn || !drawn.png || !(drawn.width > 0) || !(drawn.height > 0)) return null;
+  const data = Uint8Array.from(atob(drawn.png), character => character.charCodeAt(0));
+  return { data, extension: 'png', mediaType: 'image/png', size: { width: drawn.width, height: drawn.height } };
+}
+
 /**
- * What the writers look the drawn diagrams and formulas up in.
- * @param {{ diagrams: string[], formulas: { tex: string, display: boolean }[] }} jobs What
- *   collectMedia found
- * @param {{ diagrams: Object[], formulas: Object[] }} results What media.js renderMedia drew for
- *   them, in the same order; one that failed carries an `error` and is left out
- * @returns {{ diagram: (text: string) => Object | null, formula: (tex: string, display: boolean) => Object | null }}
- *   a diagram as an image (`{ data, extension, mediaType, size }`), a formula as parsed MathML
+ * What the writers look the drawn diagrams, mind maps and formulas up in.
+ * @param {{ diagrams: string[], mindmaps?: { text: string }[], formulas: { tex: string, display: boolean }[] }} jobs
+ *   What collectMedia found
+ * @param {{ diagrams: Object[], mindmaps?: Object[], formulas: Object[] }} results What media.js
+ *   renderMedia drew for them, in the same order; one that failed carries an `error` and is left out
+ * @returns {{ diagram: (text: string) => Object | null, mindmap: (text: string) => Object | null,
+ *   formula: (tex: string, display: boolean) => Object | null }} a diagram or mind map as an image
+ *   (`{ data, extension, mediaType, size }`), a formula as parsed MathML
  */
 function mediaLookup(jobs, results = {}) {
   const diagrams = new Map();
+  const mindmaps = new Map();
   const formulas = new Map();
   jobs.diagrams.forEach((text, index) => {
-    const drawn = (results.diagrams || [])[index];
-    if (!drawn || !drawn.png || !(drawn.width > 0) || !(drawn.height > 0)) return;
-    const data = Uint8Array.from(atob(drawn.png), character => character.charCodeAt(0));
-    diagrams.set(text, { data, extension: 'png', mediaType: 'image/png', size: { width: drawn.width, height: drawn.height } });
+    const image = pngImage((results.diagrams || [])[index]);
+    if (image) diagrams.set(text, image);
+  });
+  (jobs.mindmaps || []).forEach((job, index) => {
+    const image = pngImage((results.mindmaps || [])[index]);
+    if (image) mindmaps.set(job.text, image);
   });
   jobs.formulas.forEach((formula, index) => {
     const drawn = (results.formulas || [])[index];
@@ -1083,6 +1109,7 @@ function mediaLookup(jobs, results = {}) {
   });
   return {
     diagram: text => diagrams.get(text) || null,
+    mindmap: text => mindmaps.get(text) || null,
     formula: (tex, display) => formulas.get(mathKey(tex, display)) || null
   };
 }
@@ -1588,6 +1615,290 @@ module.exports = {
   const api = { splitMath, protectMath, renderMath };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else scope.MdPdfMath = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+  },
+  "markmap": function (module, exports, require) {
+/*! SPDX-License-Identifier: MIT | Copyright (c) 2026 Van Nguyen | github.com/vannt-dev/convert-md-to-pdf */
+/**
+ * Markmap mind maps: the Markdown headings and lists of a ```markmap block drawn as a mind map.
+ *
+ * 1. `toTree` reads the block with marked into markmap's tree (`{ content, children }`, the
+ *    content as HTML). It runs wherever marked is: the CLI, the extension preview and the Word
+ *    writer. `markmapBlock` is the HTML a block becomes, the tree in a data attribute and the
+ *    source as the text, which is what a page that cannot draw the map shows.
+ * 2. `renderMarkmaps` and `drawMarkmap` draw in a page that has markmap-view (and d3) loaded.
+ *    The map is drawn once, without animation, and kept as a plain SVG picture sized to the
+ *    map: nothing moves or folds in the PDF, the saved HTML or the Word picture.
+ *
+ * Needs nothing from Node: the same file is shipped in the extension as extension/lib/markmap.js
+ * and inlined in the CLI's HTML (a test keeps the two copies identical).
+ */
+(function (scope) {
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  // The options a block may set in its own front matter (`markmap:` then `key: value` lines).
+  const NUMBER_OPTIONS = ['colorFreezeLevel', 'initialExpandLevel', 'maxWidth', 'spacingHorizontal', 'spacingVertical', 'paddingX'];
+  // Long node text wraps at this width (pixels) unless the block sets maxWidth.
+  const DEFAULT_OPTIONS = { maxWidth: 320 };
+  // Relative addresses, web and mail links and anchors; anything else (javascript: ...) is text.
+  const SAFE_HREF = /^(?:https?:|mailto:|#|[^:]*$)/i;
+  // A font every system has: the Word picture is drawn without the page's web fonts.
+  const FONT = '400 15px/20px Arial, Helvetica, sans-serif';
+  const DARK_COLOURS = '--markmap-text-color: #e5e7eb; --markmap-circle-open-bg: #1e293b; ' +
+    '--markmap-code-bg: #334155; --markmap-code-color: #e2e8f0; --markmap-a-color: #60a5fa;';
+  const PADDING = 12;
+  // The HTML toTree writes into a node; anything else found in a tree is drawn as its text.
+  const NODE_TAGS = new Set(['A', 'B', 'BR', 'CODE', 'DEL', 'EM', 'I', 'PRE', 'S', 'STRONG']);
+
+  function escapeHtml(text) {
+    return String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function unquote(value) {
+    const text = value.trim();
+    return /^(["']).*\1$/.test(text) ? text.slice(1, -1) : text;
+  }
+
+  /**
+   * Takes the block's own front matter off: `markmap:` and its indented `key: value` lines.
+   * @returns {{ options: Object, body: string }}
+   */
+  function readOptions(source) {
+    const match = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(source);
+    if (!match) return { options: {}, body: source };
+    const options = {};
+    let inside = false;
+    for (const line of match[1].split(/\r?\n/)) {
+      if (/^markmap:\s*$/.test(line)) { inside = true; continue; }
+      if (!/^\s/.test(line)) { inside = false; continue; }
+      const pair = inside && /^\s+([A-Za-z]+):\s*(.*)$/.exec(line);
+      if (!pair) continue;
+      const [, key, value] = pair;
+      if (NUMBER_OPTIONS.includes(key) && Number.isFinite(Number(value)) && value.trim() !== '') {
+        options[key] = Number(value);
+      } else if (key === 'color' && value.trim()) {
+        const list = /^\[(.*)\]$/.exec(value.trim());
+        options.color = (list ? list[1].split(',') : [value]).map(unquote).filter(Boolean);
+      }
+    }
+    return { options, body: source.slice(match[0].length) };
+  }
+
+  function node(content) {
+    return { content, children: [] };
+  }
+
+  /**
+   * The mind map of a block.
+   * @param {string} source The block's Markdown
+   * @param {Object} markedLib marked (the module, or the browser's `marked`)
+   * @returns {{ root: Object, options: Object } | null} null when the block has nothing to draw
+   */
+  function toTree(source, markedLib) {
+    const { options, body } = readOptions(String(source || ''));
+    const md = new markedLib.Marked({ gfm: true });
+    md.use({
+      renderer: {
+        // HTML written into a node is shown as text: the node is put into the page as HTML.
+        html(token) { return escapeHtml(token.text); },
+        link(token) {
+          return SAFE_HREF.test(token.href || '') ? false : this.parser.parseInline(token.tokens);
+        },
+        // A picture is not loaded into the map (the Word picture could not show it): its text is.
+        image(token) { return escapeHtml(token.text || ''); }
+      }
+    });
+    const inline = (text) => md.parseInline(text || '').trim();
+    const code = (token) => `<pre><code>${escapeHtml(token.text || '')}</code></pre>`;
+
+    const addList = (list, parent) => {
+      for (const item of list.items) {
+        const child = node('');
+        let content = null;
+        for (const token of item.tokens) {
+          if (token.type === 'list') addList(token, child);
+          else if (token.type === 'text' || token.type === 'paragraph') {
+            if (content === null) content = inline(token.text);
+            else child.children.push(node(inline(token.text)));
+          } else if (token.type === 'code') child.children.push(node(code(token)));
+        }
+        child.content = (item.task ? (item.checked ? '&#9745; ' : '&#9744; ') : '') + (content || '');
+        parent.children.push(child);
+      }
+    };
+
+    const root = node('');
+    const stack = [{ depth: 0, node: root }];
+    for (const token of md.lexer(body)) {
+      if (token.type === 'heading') {
+        while (stack.length > 1 && stack[stack.length - 1].depth >= token.depth) stack.pop();
+        const heading = node(inline(token.text));
+        stack[stack.length - 1].node.children.push(heading);
+        stack.push({ depth: token.depth, node: heading });
+        continue;
+      }
+      const parent = stack[stack.length - 1].node;
+      if (token.type === 'list') addList(token, parent);
+      else if (token.type === 'paragraph') parent.children.push(node(inline(token.text)));
+      else if (token.type === 'code') parent.children.push(node(code(token)));
+    }
+    if (!root.children.length) return null;
+    // One top-level node is the centre of the map; several hang off an empty one.
+    return { root: root.children.length === 1 ? root.children[0] : root, options };
+  }
+
+  /**
+   * The HTML a ```markmap block becomes in the page: drawn by renderMarkmaps, or shown as its
+   * source where it cannot be.
+   * @param {string} source
+   * @param {Object} markedLib
+   * @returns {string}
+   */
+  function markmapBlock(source, markedLib) {
+    const tree = toTree(source, markedLib);
+    const data = tree ? ` data-markmap="${escapeHtml(JSON.stringify(tree))}"` : '';
+    return `<div class="markmap-container"><pre class="markmap-source"${data}>${escapeHtml(source)}</pre></div>`;
+  }
+
+  /**
+   * A node's HTML with only what toTree writes kept: the page's tree is read from an attribute,
+   * which the page's own HTML could also have set.
+   * @param {string} html
+   * @param {Document} doc
+   * @returns {string}
+   */
+  function cleanContent(html, doc) {
+    const box = doc.createElement('template');
+    box.innerHTML = String(html || '');
+    const walk = (parent) => {
+      for (const el of Array.from(parent.children)) {
+        if (!NODE_TAGS.has(el.tagName)) {
+          el.replaceWith(doc.createTextNode(el.textContent));
+          continue;
+        }
+        for (const attr of Array.from(el.attributes)) {
+          const keep = el.tagName === 'A' && attr.name === 'href' && SAFE_HREF.test(attr.value.trim());
+          if (!keep) el.removeAttribute(attr.name);
+        }
+        walk(el);
+      }
+    };
+    walk(box.content);
+    return box.innerHTML;
+  }
+
+  function cleanTree(node, doc) {
+    return {
+      content: cleanContent(node && node.content, doc),
+      children: Array.isArray(node && node.children) ? node.children.map((child) => cleanTree(child, doc)) : []
+    };
+  }
+
+  // One map is drawn at a time: each lends the page a stand-in requestAnimationFrame.
+  let drawing = Promise.resolve();
+
+  /**
+   * Draws a mind map as a still SVG picture, the size of the map.
+   * @param {{ root: Object, options: Object }} tree What toTree returned
+   * @param {{ markmap: Object, document?: Document, dark?: boolean, host?: Element }} libraries
+   *   `markmap` is markmap-view (the browser's `markmap`); `dark` draws light text for a dark
+   *   page; `host` is where the map will be shown (the page's body by default), so that its text
+   *   is measured with the styles it will have there
+   * @returns {Promise<string>} the SVG
+   */
+  function drawMarkmap(tree, libraries) {
+    const run = drawing.then(() => drawOne(tree, libraries));
+    drawing = run.catch(() => {});
+    return run;
+  }
+
+  async function drawOne(tree, libraries) {
+    const view = libraries && libraries.markmap;
+    if (!view || !view.Markmap) throw new Error('Markmap is not loaded');
+    const doc = libraries.document || scope.document;
+    const win = doc.defaultView || scope;
+    // Drawn out of sight but laid out: markmap measures each node's text in the page.
+    const holder = doc.createElement('div');
+    holder.style.cssText = 'position:absolute;left:-100000px;top:0;width:1600px;height:1200px;visibility:hidden;overflow:hidden;';
+    const svg = doc.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('width', '1600');
+    svg.setAttribute('height', '1200');
+    holder.appendChild(svg);
+    (libraries.host || doc.body).appendChild(holder);
+    let mm = null;
+    const frame = win.requestAnimationFrame;
+    try {
+      if (doc.fonts && doc.fonts.ready) await doc.fonts.ready;
+      const colours = libraries.dark ? DARK_COLOURS : '';
+      mm = new view.Markmap(svg, {
+        ...(view.deriveOptions ? view.deriveOptions({ ...DEFAULT_OPTIONS, ...tree.options }) : DEFAULT_OPTIONS),
+        duration: 0,
+        zoom: false,
+        pan: false,
+        // Two classes: each map's SVG brings markmap's own `.markmap` rules, which a later map's
+        // copy would otherwise put back over this map's colours.
+        style: (id) => `.markmap.${id} { --markmap-font: ${FONT}; ${colours} }`
+      });
+      // No animation: every change lands at once, so the picture is final when setData ends.
+      mm.transition = (selection) => selection;
+      // markmap waits for a frame before measuring, and a headless page may never paint one, or
+      // stop its clock (--virtual-time-budget) before a timer fires: the wait ends at once, since
+      // measuring the text lays the page out anyway.
+      win.requestAnimationFrame = (callback) => {
+        callback(win.performance ? win.performance.now() : 0);
+        return 0;
+      };
+      try {
+        await mm.setData(cleanTree(tree.root, doc));
+      } finally {
+        win.requestAnimationFrame = frame;
+      }
+      const { x1, y1, x2, y2 } = mm.state.rect;
+      const width = Math.ceil(x2 - x1 + PADDING * 2);
+      const height = Math.ceil(y2 - y1 + PADDING * 2);
+      svg.setAttribute('viewBox', `${x1 - PADDING} ${y1 - PADDING} ${width} ${height}`);
+      svg.setAttribute('width', String(width));
+      svg.setAttribute('height', String(height));
+      mm.g.attr('transform', null);
+      return new win.XMLSerializer().serializeToString(svg);
+    } finally {
+      if (mm) mm.destroy();
+      holder.remove();
+    }
+  }
+
+  /**
+   * Draws every ```markmap block under `container` (what markmapBlock wrote) in its place.
+   * A block that cannot be drawn keeps showing its source.
+   * @param {Element} container
+   * @param {{ markmap: Object, dark?: boolean }} libraries
+   * @returns {Promise<void>}
+   */
+  async function renderMarkmaps(container, libraries) {
+    const doc = container.ownerDocument || scope.document;
+    for (const source of container.querySelectorAll('pre.markmap-source[data-markmap]')) {
+      try {
+        const host = source.parentNode || undefined;
+        const svg = await drawMarkmap(JSON.parse(source.getAttribute('data-markmap')), { ...libraries, document: doc, host });
+        const holder = doc.createElement('div');
+        holder.innerHTML = svg;
+        const picture = holder.firstElementChild;
+        picture.setAttribute('role', 'img');
+        picture.setAttribute('aria-label', source.textContent.trim());
+        source.replaceWith(picture);
+      } catch (err) {
+        if (scope.console) scope.console.error('Markmap render error:', err);
+      }
+    }
+  }
+
+  const api = { toTree, markmapBlock, drawMarkmap, renderMarkmaps };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else scope.MdPdfMarkmap = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
   },
   "obsidian": function (module, exports, require) {

@@ -15,6 +15,7 @@ This document demonstrates the capabilities of **`convert-md-to-pdf`**, a CLI ut
 | Feature | Support | Engine / Details |
 | :--- | :---: | :--- |
 | **Mermaid Diagrams** | ✅ | Sequence, Flowchart, Class, Gantt |
+| **Mind Maps** | ✅ | ` ```markmap ` headings and lists (markmap) |
 | **LaTeX Math** | ✅ | Display Math & Inline Math |
 | **ASCII UI Mockups** | ✅ | Monospaced High-Contrast Dark Box |
 | **Multi-Language UTF-8** | ✅ | Full support for CJK (Japanese, Chinese) & Vietnamese |
@@ -66,6 +67,27 @@ $$\text{Estimated Date (No. 3.7.1.x)} = \text{Target Date} - \text{Offset Days}$
 
 ---
 
-## 5. Conclusion
+## 5. Mind Map
+
+A ` ```markmap ` block draws its Markdown headings and lists as a mind map:
+
+```markmap
+# md-pdf-studio
+## Input
+- Markdown files
+- Pasted text
+- The page you are on
+## Output
+- **PDF** and static HTML
+- Word (`.docx`) and EPUB
+## Extras
+- Mermaid diagrams
+- LaTeX math
+- [Themes](https://github.com/vannt-dev/convert-md-to-pdf)
+```
+
+---
+
+## 6. Conclusion
 
 The tool delivers pixel-perfect document rendering with zero manual styling overhead.

@@ -9,7 +9,7 @@ const { createZip } = require('./zip');
  * HTML: headings, lists, tables, code and quotes become real Word styles and
  * structures, which a reader can restyle, instead of formatted lookalikes.
  *
- * Mermaid diagrams become pictures and LaTeX formulas Word equations when
+ * Mermaid diagrams and markmap mind maps become pictures and LaTeX formulas Word equations when
  * `options.media` has them drawn (see docmodel's collectMedia and mediaLookup);
  * without it a diagram is kept as its source and a formula as typed. Themes and
  * custom CSS are not carried over. Images are embedded when they are local PNG,
@@ -19,7 +19,7 @@ const { createZip } = require('./zip');
 const TWIPS_PER_MM = 1440 / 25.4;
 const EMU_PER_PIXEL = 9525;
 const EMU_PER_TWIP = 635;
-const NO_MEDIA = { diagram: () => null, formula: () => null };
+const NO_MEDIA = { diagram: () => null, mindmap: () => null, formula: () => null };
 const PAGE_SIZES = { A4: [11906, 16838], LETTER: [12240, 15840], A3: [16838, 23811], LEGAL: [12240, 20160] };
 const HEADING_SIZES = [36, 30, 26, 24, 22, 22];
 const CODE_FONT = 'Consolas';
@@ -262,10 +262,13 @@ class DocxWriter {
           output += this.paragraph('', { style: 'CodeSpacer' });
           break;
         }
-        case 'diagram': {
-          const image = this.media.diagram(block.text);
+        case 'diagram':
+        case 'mindmap': {
+          const mindmap = block.type === 'mindmap';
+          // A lookup made before mind maps were drawn has no `mindmap`.
+          const image = mindmap ? (this.media.mindmap ? this.media.mindmap(block.text) : null) : this.media.diagram(block.text);
           if (!image) {
-            output += this.blocks([{ type: 'code', lang: 'mermaid', text: block.text }], { ...context, numbering: null });
+            output += this.blocks([{ type: 'code', lang: mindmap ? 'markmap' : 'mermaid', text: block.text }], { ...context, numbering: null });
             break;
           }
           // The description is the diagram's source: what a screen reader can tell of it.

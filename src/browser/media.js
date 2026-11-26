@@ -5,27 +5,33 @@ const path = require('path');
 const { execFile } = require('child_process');
 const { pathToFileURL } = require('url');
 const { findBrowserExecutable } = require('./renderer');
-const { KATEX_VERSION, MERMAID_VERSION } = require('../core/templates');
+const { KATEX_VERSION, MERMAID_VERSION, MARKMAP_VERSION, D3_VERSION } = require('../core/templates');
 
 /**
- * Draws the Mermaid diagrams and LaTeX formulas of a Word or EPUB export in the headless
- * browser the PDF is printed with: a page loads Mermaid and KaTeX (the versions the PDF loads),
- * draws everything with src/core/media.js, and the browser prints the page with the results.
+ * Draws the Mermaid diagrams, mind maps and LaTeX formulas of a Word or EPUB export in the
+ * headless browser the PDF is printed with: a page loads Mermaid, markmap-view and KaTeX (the
+ * versions the PDF loads), draws everything with src/core/media.js, and the browser prints the
+ * page with the results.
  */
 
 const MEDIA_SCRIPT = fs.readFileSync(path.join(__dirname, '..', 'core', 'media.js'), 'utf8');
+const MARKMAP_SCRIPT = fs.readFileSync(path.join(__dirname, '..', 'core', 'markmap.js'), 'utf8');
 const RESULT = /<pre id="mdpdf-media"[^>]*>([A-Za-z0-9+/=\s]*)<\/pre>/;
 
 /**
  * The page that draws the jobs and leaves the results, as base64 JSON, in `#mdpdf-media`.
- * @param {{ diagrams: string[], formulas: Object[] }} jobs
+ * @param {{ diagrams: string[], mindmaps?: Object[], formulas: Object[] }} jobs
  * @returns {string}
  */
 function mediaPage(jobs) {
+  const mindmaps = (jobs.mindmaps || []).length > 0;
   // Inside a script element: `<` written as an escape, so the JSON cannot close it.
   const data = JSON.stringify(jobs).replace(/</g, '\\u003c');
   const scripts = [
     jobs.diagrams.length ? `<script src="https://cdn.jsdelivr.net/npm/mermaid@${MERMAID_VERSION}/dist/mermaid.min.js"></script>` : '',
+    mindmaps ? `<script src="https://cdn.jsdelivr.net/npm/d3@${D3_VERSION}/dist/d3.min.js"></script>` : '',
+    mindmaps ? `<script src="https://cdn.jsdelivr.net/npm/markmap-view@${MARKMAP_VERSION}/dist/browser/index.js"></script>` : '',
+    mindmaps ? `<script>${MARKMAP_SCRIPT}</script>` : '',
     jobs.formulas.length ? `<script src="https://cdn.jsdelivr.net/npm/katex@${KATEX_VERSION}/dist/katex.min.js"></script>` : ''
   ].join('\n');
   return `<!DOCTYPE html>
@@ -40,6 +46,7 @@ ${scripts}
   try {
     results = await MdPdfMedia.renderMedia(jobs, {
       mermaid: typeof mermaid !== 'undefined' ? mermaid : null,
+      markmap: typeof markmap !== 'undefined' ? markmap : null,
       katex: typeof katex !== 'undefined' ? katex : null
     });
   } catch (err) {
@@ -90,11 +97,11 @@ function dumpDom(browserPath, fileUrl, legacyHeadless) {
 }
 
 /**
- * Draws the diagrams and formulas of a document.
- * @param {{ diagrams: string[], formulas: { tex: string, display: boolean }[] }} jobs What
+ * Draws the diagrams, mind maps and formulas of a document.
+ * @param {{ diagrams: string[], mindmaps?: Object[], formulas: { tex: string, display: boolean }[] }} jobs What
  *   docmodel's collectMedia found
  * @param {{ executablePath?: string }} [options] The browser to use, as for the PDF
- * @returns {Promise<{ diagrams: Object[], formulas: Object[] }>} what media.js renderMedia returns;
+ * @returns {Promise<{ diagrams: Object[], mindmaps: Object[], formulas: Object[] }>} what media.js renderMedia returns;
  *   a library that did not load (no network) leaves an error on each of its jobs
  * @throws when there is no browser, or it did not finish
  */
