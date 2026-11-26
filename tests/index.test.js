@@ -1425,6 +1425,18 @@ Text`, { toc: true });
     }
     const { CONFIG_KEYS } = require('../src/cli/config');
     assert.ok('markmap' in CONFIG_KEYS);
+    // The table of contents leaves out the headings inside a fence (the mind map's, or any code).
+    const toc = generateToc(`${mindmapSource}
+~~~~md
+# In code
+~~~
+# Still code
+~~~~
+
+## After
+`).tocHtml;
+    assert.ok(toc.includes('>Plan<') && toc.includes('>After<'));
+    assert.ok(!toc.includes('Release') && !toc.includes('Research') && !toc.includes('code<'), toc);
   });
 
   test('extension: ships markmap-view, d3 and markmap.js, loaded in order by the preview', () => {
@@ -1510,6 +1522,38 @@ Text`, { toc: true });
       // Wider than tall, as a left-to-right map of this outline is, and bigger than a stub.
       const size = imageSize(picture);
       assert.ok(size.width > size.height && size.width > 300, `${size.width} x ${size.height}`);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  await asyncTest('markmap: the page draws the map, and a tree written by hand into the page is drawn as text', async () => {
+    const { findBrowserExecutable } = require('../src/browser/renderer');
+    const browser = findBrowserExecutable();
+    if (!browser) {
+      console.log('   (skipped: no Chrome, Edge or Chromium here)');
+      return;
+    }
+    const { execFile } = require('child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-pdf-mindmap-page-'));
+    const forged = JSON.stringify({ root: { content: '<img src="x" onerror="document.title=\'pwned\'">forged <b onclick="x()">bold</b> <a href="javascript:x()">link</a>', children: [] }, options: {} });
+    const page = path.join(dir, 'page.html');
+    fs.writeFileSync(page, parseMarkdownToHtml(`${mindmapSource}\n<pre class="markmap-source" data-markmap='${forged.replace(/'/g, '&#39;')}'>x</pre>\n`), 'utf8');
+    try {
+      const dom = await new Promise((resolve, reject) => execFile(browser, [
+        '--headless=new', '--disable-gpu', '--no-sandbox', '--virtual-time-budget=15000', '--dump-dom', pathToFileURL(page).href
+      ], { timeout: 120000, maxBuffer: 64 * 1024 * 1024, encoding: 'utf8' }, (error, stdout) => (error ? reject(error) : resolve(stdout))));
+      const maps = dom.match(/<svg[^>]*class="markmap[^"]*"/g) || [];
+      if (!maps.length && dom.includes('markmap-source')) {
+        console.log('   (skipped: markmap-view could not be loaded from cdn.jsdelivr.net)');
+        return;
+      }
+      assert.strictEqual(maps.length, 2, 'both blocks are drawn');
+      assert.ok(dom.includes('>Release<') && dom.includes('<a href="https://example.com">Survey</a>'));
+      assert.ok(dom.includes('forged <b>bold</b> <a>link</a>'), 'only the tags toTree writes, without their attributes');
+      // (The first map's source, with its javascript: link and <img>, is only its aria-label text.)
+      assert.ok(!dom.includes('onerror="document.title') && !dom.includes('onclick="x()"') && !dom.includes('href="javascript:'));
+      assert.ok(!dom.includes('<title>pwned</title>'));
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

@@ -341,8 +341,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const headingsMap = new Map();
     const slugCounts = {};
 
+    // Lines inside a fenced code block (a ```markmap mind map is all headings) are not headings.
+    let fence = null;
     lines.forEach(line => {
-      const match = line.match(/^(#{1,3})\s+(.+)$/);
+      const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+      if (marker && (!fence || (marker[1][0] === fence[0] && marker[1].length >= fence.length && !line.trim().slice(marker[1].length).trim()))) {
+        fence = fence ? null : marker[1];
+        return;
+      }
+      const match = fence ? null : line.match(/^(#{1,3})\s+(.+)$/);
       if (match) {
         const level = match[1].length;
         let title = match[2].trim();

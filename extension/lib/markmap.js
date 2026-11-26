@@ -26,6 +26,8 @@
   const DARK_COLOURS = '--markmap-text-color: #e5e7eb; --markmap-circle-open-bg: #1e293b; ' +
     '--markmap-code-bg: #334155; --markmap-code-color: #e2e8f0; --markmap-a-color: #60a5fa;';
   const PADDING = 12;
+  // The HTML toTree writes into a node; anything else found in a tree is drawn as its text.
+  const NODE_TAGS = new Set(['A', 'B', 'BR', 'CODE', 'DEL', 'EM', 'I', 'PRE', 'S', 'STRONG']);
 
   function escapeHtml(text) {
     return String(text)
@@ -143,13 +145,58 @@
   }
 
   /**
+   * A node's HTML with only what toTree writes kept: the page's tree is read from an attribute,
+   * which the page's own HTML could also have set.
+   * @param {string} html
+   * @param {Document} doc
+   * @returns {string}
+   */
+  function cleanContent(html, doc) {
+    const box = doc.createElement('template');
+    box.innerHTML = String(html || '');
+    const walk = (parent) => {
+      for (const el of Array.from(parent.children)) {
+        if (!NODE_TAGS.has(el.tagName)) {
+          el.replaceWith(doc.createTextNode(el.textContent));
+          continue;
+        }
+        for (const attr of Array.from(el.attributes)) {
+          const keep = el.tagName === 'A' && attr.name === 'href' && SAFE_HREF.test(attr.value.trim());
+          if (!keep) el.removeAttribute(attr.name);
+        }
+        walk(el);
+      }
+    };
+    walk(box.content);
+    return box.innerHTML;
+  }
+
+  function cleanTree(node, doc) {
+    return {
+      content: cleanContent(node && node.content, doc),
+      children: Array.isArray(node && node.children) ? node.children.map((child) => cleanTree(child, doc)) : []
+    };
+  }
+
+  // One map is drawn at a time: each lends the page a stand-in requestAnimationFrame.
+  let drawing = Promise.resolve();
+
+  /**
    * Draws a mind map as a still SVG picture, the size of the map.
    * @param {{ root: Object, options: Object }} tree What toTree returned
-   * @param {{ markmap: Object, document?: Document, dark?: boolean }} libraries `markmap` is
-   *   markmap-view (the browser's `markmap`); `dark` draws light text for a dark page
+   * @param {{ markmap: Object, document?: Document, dark?: boolean, host?: Element }} libraries
+   *   `markmap` is markmap-view (the browser's `markmap`); `dark` draws light text for a dark
+   *   page; `host` is where the map will be shown (the page's body by default), so that its text
+   *   is measured with the styles it will have there
    * @returns {Promise<string>} the SVG
    */
-  async function drawMarkmap(tree, libraries) {
+  function drawMarkmap(tree, libraries) {
+    const run = drawing.then(() => drawOne(tree, libraries));
+    drawing = run.catch(() => {});
+    return run;
+  }
+
+  async function drawOne(tree, libraries) {
     const view = libraries && libraries.markmap;
     if (!view || !view.Markmap) throw new Error('Markmap is not loaded');
     const doc = libraries.document || scope.document;
@@ -161,7 +208,7 @@
     svg.setAttribute('width', '1600');
     svg.setAttribute('height', '1200');
     holder.appendChild(svg);
-    doc.body.appendChild(holder);
+    (libraries.host || doc.body).appendChild(holder);
     let mm = null;
     const frame = win.requestAnimationFrame;
     try {
@@ -172,14 +219,16 @@
         duration: 0,
         zoom: false,
         pan: false,
-        style: (id) => `.${id} { --markmap-font: ${FONT}; ${colours} }`
+        // Two classes: each map's SVG brings markmap's own `.markmap` rules, which a later map's
+        // copy would otherwise put back over this map's colours.
+        style: (id) => `.markmap.${id} { --markmap-font: ${FONT}; ${colours} }`
       });
       // No animation: every change lands at once, so the picture is final when setData ends.
       mm.transition = (selection) => selection;
       // markmap waits for a frame before measuring, and a headless page may never paint one.
       win.requestAnimationFrame = (callback) => win.setTimeout(callback, 0);
       try {
-        await mm.setData(JSON.parse(JSON.stringify(tree.root)));
+        await mm.setData(cleanTree(tree.root, doc));
       } finally {
         win.requestAnimationFrame = frame;
       }
@@ -208,7 +257,8 @@
     const doc = container.ownerDocument || scope.document;
     for (const source of container.querySelectorAll('pre.markmap-source[data-markmap]')) {
       try {
-        const svg = await drawMarkmap(JSON.parse(source.getAttribute('data-markmap')), { ...libraries, document: doc });
+        const host = source.parentNode || undefined;
+        const svg = await drawMarkmap(JSON.parse(source.getAttribute('data-markmap')), { ...libraries, document: doc, host });
         const holder = doc.createElement('div');
         holder.innerHTML = svg;
         const picture = holder.firstElementChild;
