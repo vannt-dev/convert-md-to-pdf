@@ -23,14 +23,6 @@
   const SCALE = 2;
   const MAX_PIXELS = 4096;
 
-  function base64(bytes) {
-    let binary = '';
-    for (let at = 0; at < bytes.length; at += 0x8000) {
-      binary += String.fromCharCode.apply(null, bytes.subarray(at, at + 0x8000));
-    }
-    return btoa(binary);
-  }
-
   /**
    * An SVG drawn onto a white canvas, as PNG bytes.
    * @returns {Promise<{ png: string, width: number, height: number }>} base64 PNG, and the size
@@ -61,9 +53,12 @@
     context.fillStyle = '#ffffff';
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.drawImage(img, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
-    if (!blob) throw new Error('the picture could not be written');
-    return { png: base64(new Uint8Array(await blob.arrayBuffer())), width: Math.round(width), height: Math.round(height) };
+    // Written at once: the headless browser's clock (--virtual-time-budget) does not wait for an
+    // asynchronous toBlob, and could run out with the picture still being encoded.
+    const url = canvas.toDataURL('image/png');
+    const comma = url.indexOf(',');
+    if (!url.startsWith('data:image/png') || comma < 0) throw new Error('the picture could not be written');
+    return { png: url.slice(comma + 1), width: Math.round(width), height: Math.round(height) };
   }
 
   /**

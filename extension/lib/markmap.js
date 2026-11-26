@@ -225,8 +225,13 @@
       });
       // No animation: every change lands at once, so the picture is final when setData ends.
       mm.transition = (selection) => selection;
-      // markmap waits for a frame before measuring, and a headless page may never paint one.
-      win.requestAnimationFrame = (callback) => win.setTimeout(callback, 0);
+      // markmap waits for a frame before measuring, and a headless page may never paint one, or
+      // stop its clock (--virtual-time-budget) before a timer fires: the wait ends at once, since
+      // measuring the text lays the page out anyway.
+      win.requestAnimationFrame = (callback) => {
+        callback(win.performance ? win.performance.now() : 0);
+        return 0;
+      };
       try {
         await mm.setData(cleanTree(tree.root, doc));
       } finally {
